@@ -2,6 +2,7 @@
 #define SGX_QUOTE_VERIFY_H
 
 #include "sgx_types.h"
+#include "sgx_cert_verify.h"
 #include <openssl/evp.h>
 #include <openssl/x509.h>
 
@@ -12,8 +13,11 @@ typedef struct {
     int signature_valid;
     int version_valid;
     int report_data_matches_cert;
+    int cert_chain_valid;        /* Flag indicating if the certificate chain is valid */
+    int attestation_key_valid;   /* Flag indicating if the attestation key is certified */
     int total_checks;
     int checks_passed;
+    sgx_cert_verification_result_t cert_result; /* Certificate verification details */
 } sgx_verification_result_t;
 
 /* Verify SGX quote (using optional external CA file, or built-in CA if NULL) */

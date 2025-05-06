@@ -4,6 +4,7 @@
 #include "sgx_quote_parser.h"
 #include "ca.h"
 #include "sgx_utils.h"
+#include "sgx_cert_verify.h"
 #include <openssl/sha.h>
 #include <openssl/ecdsa.h>
 
@@ -14,8 +15,13 @@ static void init_verification_result(sgx_verification_result_t *result) {
     result->signature_valid = 0;
     result->version_valid = 0;
     result->report_data_matches_cert = 0;
+    result->cert_chain_valid = 0;
+    result->attestation_key_valid = 0;
     result->total_checks = 0;
     result->checks_passed = 0;
+    
+    /* Initialize the certificate verification result */
+    init_cert_verification_result(&result->cert_result);
 }
 
 /* Check if MR value is valid (not all zeros) */
@@ -280,7 +286,45 @@ int verify_sgx_quote(const unsigned char *quote_data, int quote_len, const char 
         printf("complete cryptographic verification for non-ECDSA quote types.\n");
     }
     
+    /* Check 9: Certificate Chain Verification */
+    if (quote->version == 3) {
+        result->total_checks++;
+        printf("\n[Certificate Chain Verification]\n");
+        
+        /* Extract the PCK certificate chain */
+        if (extract_pck_cert_chain(quote, &result->cert_result)) {
+            /* Verify the PCK certificate chain */
+            if (verify_pck_cert_chain(&result->cert_result, ca_stack)) {
+                printf("✅ PCK certificate chain verified\n");
+                result->cert_chain_valid = 1;
+                result->checks_passed++;
+            } else {
+                printf("❌ PCK certificate chain verification failed\n");
+            }
+        } else {
+            printf("❌ Failed to extract PCK certificate chain\n");
+        }
+    } else {
+        printf("Certificate chain verification not implemented for quote version %u\n", quote->version);
+    }
+    
+    /* Check 10: Attestation Key Verification */
+    if (quote->version == 3 && result->cert_chain_valid) {
+        result->total_checks++;
+        printf("\n[Attestation Key Verification]\n");
+        
+        /* Verify the attestation key */
+        if (verify_attestation_key(quote, &result->cert_result)) {
+            printf("✅ Attestation key verified\n");
+            result->attestation_key_valid = 1;
+            result->checks_passed++;
+        } else {
+            printf("❌ Attestation key verification failed\n");
+        }
+    }
+    
     /* Cleanup */
+    free_cert_verification_result(&result->cert_result);
     if (ca_stack) sk_X509_pop_free(ca_stack, X509_free);
     
     return ret_val;
