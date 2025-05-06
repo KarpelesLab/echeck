@@ -119,6 +119,15 @@ typedef enum
  * 4. QE report and ECDSA signature
  * 5. QE certification data signature
  */
+/* SGX Quote v3 ECDSA signature data format */
+typedef struct _sgx_ql_ecdsa_sig_data_t {
+    uint8_t               sig[32*2];            /* Signature over the Quote using the ECDSA Att key. Big Endian. */
+    uint8_t               attest_pub_key[32*2]; /* ECDSA Att Public Key. Hash in QE3Report.ReportData. Big Endian */
+    sgx_report_body_t     qe_report;            /* QE3 Report of the QE when the Att key was generated. The ReportData will contain the ECDSA_ID */
+    uint8_t               qe_report_sig[32*2];  /* Signature of QE Report using the Certification Key (PCK for root signing). Big Endian */
+    uint8_t               auth_certification_data[];  /* Place holder for both the auth_data_t and certification_data_t. Concatenated in that order. */
+} sgx_ql_ecdsa_sig_data_t;
+
 typedef struct _sgx_quote_signature {
     uint32_t signature_size;     /* Size of the signature */
     uint8_t signature[64];       /* The actual ECDSA signature (r,s components) */
