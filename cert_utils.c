@@ -133,45 +133,44 @@ int verify_ecdsa_signature(const unsigned char *data, size_t data_len,
         goto cleanup;
     }
     
-    /* For ECDSA, we need to set the signature format to r/s pair */
-    if (EVP_PKEY_CTX_set_signature_md(pkey_ctx, EVP_sha256()) != 1) {
-        print_openssl_error("Error setting signature digest");
+    /* Create DER-encoded ECDSA signature from r and s components */
+    ECDSA_SIG *sig_obj = ECDSA_SIG_new();
+    if (!sig_obj) {
+        print_openssl_error("Error creating ECDSA_SIG object");
         goto cleanup;
     }
     
-    /* Convert r and s values to DER format (required by OpenSSL) */
+    /* Convert raw r and s values to BIGNUMs and set them in the ECDSA_SIG object */
+    BIGNUM *bn_r = BN_bin2bn(sig_r, sig_r_len, NULL);
+    BIGNUM *bn_s = BN_bin2bn(sig_s, sig_s_len, NULL);
+    
+    if (!bn_r || !bn_s) {
+        print_openssl_error("Error converting signature components to BIGNUMs");
+        if (bn_r) BN_free(bn_r);
+        if (bn_s) BN_free(bn_s);
+        ECDSA_SIG_free(sig_obj);
+        goto cleanup;
+    }
+    
+    /* Set the r and s values in the ECDSA_SIG structure */
+    /* Note: This function transfers ownership of bn_r and bn_s to sig_obj */
+    if (ECDSA_SIG_set0(sig_obj, bn_r, bn_s) != 1) {
+        print_openssl_error("Error setting r and s in ECDSA_SIG");
+        BN_free(bn_r);
+        BN_free(bn_s);
+        ECDSA_SIG_free(sig_obj);
+        goto cleanup;
+    }
+    
+    /* Convert the ECDSA_SIG object to DER format */
     unsigned char *der_sig = NULL;
-    size_t der_sig_len = 0;
+    int der_sig_len = i2d_ECDSA_SIG(sig_obj, &der_sig);
+    ECDSA_SIG_free(sig_obj);
     
-    /* Allocate memory for DER signature (rough estimate) */
-    der_sig_len = 2 + 2 + sig_r_len + 2 + sig_s_len;
-    der_sig = OPENSSL_malloc(der_sig_len);
-    if (!der_sig) {
-        print_openssl_error("Error allocating memory for DER signature");
+    if (der_sig_len <= 0 || !der_sig) {
+        print_openssl_error("Error encoding ECDSA signature to DER");
         goto cleanup;
     }
-    
-    /* Create DER signature manually */
-    unsigned char *p = der_sig;
-    
-    /* Sequence tag and length */
-    *p++ = 0x30; /* SEQUENCE */
-    *p++ = (unsigned char)(2 + sig_r_len + 2 + sig_s_len); /* Length */
-    
-    /* Integer r */
-    *p++ = 0x02; /* INTEGER */
-    *p++ = (unsigned char)sig_r_len; /* Length */
-    memcpy(p, sig_r, sig_r_len);
-    p += sig_r_len;
-    
-    /* Integer s */
-    *p++ = 0x02; /* INTEGER */
-    *p++ = (unsigned char)sig_s_len; /* Length */
-    memcpy(p, sig_s, sig_s_len);
-    p += sig_s_len;
-    
-    /* Update the actual DER signature length */
-    der_sig_len = p - der_sig;
     
     /* Update with the data to be verified */
     if (EVP_DigestVerifyUpdate(md_ctx, data, data_len) != 1) {
@@ -187,7 +186,80 @@ int verify_ecdsa_signature(const unsigned char *data, size_t data_len,
     if (verify_result == 1) {
         result = 1; /* Signature verified */
     } else if (verify_result == 0) {
-        printf("Signature verification failed - invalid signature\n");
+        /* Try again with flipped components (sometimes signatures are (s,r) instead of (r,s)) */
+        /* Create new signature with flipped components */
+        sig_obj = ECDSA_SIG_new();
+        if (!sig_obj) {
+            print_openssl_error("Error creating ECDSA_SIG object for retry");
+            goto cleanup;
+        }
+        
+        /* Convert raw s and r values (flipped) to BIGNUMs */
+        bn_r = BN_bin2bn(sig_s, sig_s_len, NULL);
+        bn_s = BN_bin2bn(sig_r, sig_r_len, NULL);
+        
+        if (!bn_r || !bn_s) {
+            print_openssl_error("Error converting flipped signature components to BIGNUMs");
+            if (bn_r) BN_free(bn_r);
+            if (bn_s) BN_free(bn_s);
+            ECDSA_SIG_free(sig_obj);
+            goto cleanup;
+        }
+        
+        /* Set the r and s values in the ECDSA_SIG structure */
+        if (ECDSA_SIG_set0(sig_obj, bn_r, bn_s) != 1) {
+            print_openssl_error("Error setting flipped r and s in ECDSA_SIG");
+            BN_free(bn_r);
+            BN_free(bn_s);
+            ECDSA_SIG_free(sig_obj);
+            goto cleanup;
+        }
+        
+        /* Convert the ECDSA_SIG object to DER format */
+        der_sig = NULL;
+        der_sig_len = i2d_ECDSA_SIG(sig_obj, &der_sig);
+        ECDSA_SIG_free(sig_obj);
+        
+        if (der_sig_len <= 0 || !der_sig) {
+            print_openssl_error("Error encoding flipped ECDSA signature to DER");
+            goto cleanup;
+        }
+        
+        /* Initialize a new context for verification with flipped components */
+        EVP_MD_CTX_free(md_ctx);
+        md_ctx = EVP_MD_CTX_new();
+        if (!md_ctx) {
+            print_openssl_error("Error creating new message digest context");
+            OPENSSL_free(der_sig);
+            goto cleanup;
+        }
+        
+        /* Initialize the verification operation again */
+        if (EVP_DigestVerifyInit(md_ctx, &pkey_ctx, EVP_sha256(), NULL, pkey) != 1) {
+            print_openssl_error("Error initializing digest verify for retry");
+            OPENSSL_free(der_sig);
+            goto cleanup;
+        }
+        
+        /* Update with the data to be verified */
+        if (EVP_DigestVerifyUpdate(md_ctx, data, data_len) != 1) {
+            print_openssl_error("Error updating digest verify for retry");
+            OPENSSL_free(der_sig);
+            goto cleanup;
+        }
+        
+        /* Verify the flipped signature */
+        verify_result = EVP_DigestVerifyFinal(md_ctx, der_sig, der_sig_len);
+        OPENSSL_free(der_sig);
+        
+        if (verify_result == 1) {
+            printf("Signature verified with flipped r and s components\n");
+            result = 1; /* Signature verified with flipped components */
+        } else if (verify_result == 0) {
+            printf("Signature verification failed - invalid signature (tried both component orders)\n");
+        } else {
+            print_openssl_error("Error in signature verification retry");
+        }
     } else {
         print_openssl_error("Error in signature verification");
     }

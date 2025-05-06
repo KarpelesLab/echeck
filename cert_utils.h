@@ -7,6 +7,7 @@
 #include <openssl/x509v3.h>
 #include <openssl/sha.h>
 #include <openssl/evp.h>
+#include <openssl/ecdsa.h>
 
 /* Load a certificate from a PEM file */
 X509 *load_certificate(const char *file_path);
