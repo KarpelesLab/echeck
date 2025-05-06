@@ -12,5 +12,8 @@ all: $(TARGET)
 $(TARGET): $(OBJECTS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LIBS)
 
+# Header dependencies
+main.o: main.c sgx_types.h
+
 clean:
 	$(RM) $(TARGET) $(OBJECTS)
