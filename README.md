@@ -14,12 +14,11 @@ This tool is designed to:
 ## Usage
 
 ```
-./echeck <certificate.pem> [ca.pem]
+./echeck <certificate.pem>
 ```
 
 Where:
-- `certificate.pem`: The X.509 certificate containing an SGX quote
-- `ca.pem` (optional): CA certificate(s) for verification
+- `certificate.pem`: The X.509 certificate containing an SGX quote to be verified
 
 ## Example Output
 
@@ -144,7 +143,7 @@ mrsigner=976aa9f931b8a16e01e01895d627e3ee96dce5478ebbbc77e120a25c79fe6016
 2. Certificate chain verification against the Intel SGX Root CA
 3. Validation of the attestation key against the PCK certificate
 4. Verification of certificate's public key hash against quote report data
-5. Support for external CA certificates or built-in Intel SGX Root CA
+5. Built-in Intel SGX Root CA for certificate chain verification
 
 ## Testing
 
@@ -154,9 +153,8 @@ The tool includes a test framework to validate SGX quotes from certificates:
 make test
 ```
 
-This will run the verification on all certificate files in the `test/` directory.
-If `ca.pem` is present in the root directory, it will be used for verification.
-Otherwise, the built-in Intel SGX Root CA will be used.
+This will run the verification on all certificate files in the `test/` directory
+using the built-in Intel SGX Root CA certificate.
 
 ## Limitations
 

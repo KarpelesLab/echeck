@@ -13,13 +13,12 @@
 int main(int argc, char *argv[]) {
     /* Check command line arguments */
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <certificate.pem> [ca.pem]\n", argv[0]);
-        fprintf(stderr, "Note: If ca.pem is not provided, built-in Intel SGX Root CA will be used\n");
+        fprintf(stderr, "Usage: %s <certificate.pem>\n", argv[0]);
         return 1;
     }
     
     const char *cert_file = argv[1];
-    const char *ca_file = (argc > 2) ? argv[2] : NULL;
+    const char *ca_file = NULL; /* Always use built-in CA */
     
     /* Initialize OpenSSL */
     OpenSSL_add_all_algorithms();
