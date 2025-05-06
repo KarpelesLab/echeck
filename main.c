@@ -8,11 +8,13 @@
 #include "cert_utils.h"
 #include "sgx_quote_parser.h"
 #include "sgx_quote_verify.h"
+#include "ca.h"
 
 int main(int argc, char *argv[]) {
     /* Check command line arguments */
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <certificate.pem> [ca.pem]\n", argv[0]);
+        fprintf(stderr, "Note: If ca.pem is not provided, built-in Intel SGX Root CA will be used\n");
         return 1;
     }
     
@@ -98,15 +100,13 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Failed to compute public key hash\n");
         }
         
-        /* Verify the SGX quote if CA file provided */
-        if (ca_file) {
-            sgx_verification_result_t result;
-            
-            if (verify_sgx_quote(quote_buffer.data, quote_buffer.length, ca_file, &result)) {
-                printf("SGX quote verification successful\n");
-            } else {
-                fprintf(stderr, "SGX quote verification failed\n");
-            }
+        /* Verify the SGX quote with either provided CA file or built-in CA */
+        sgx_verification_result_t result;
+        
+        if (verify_sgx_quote(quote_buffer.data, quote_buffer.length, ca_file, &result)) {
+            printf("SGX quote verification successful\n");
+        } else {
+            fprintf(stderr, "SGX quote verification failed\n");
         }
         
         free(quote_buffer.data);

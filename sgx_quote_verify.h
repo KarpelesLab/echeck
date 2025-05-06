@@ -16,7 +16,7 @@ typedef struct {
     int checks_passed;
 } sgx_verification_result_t;
 
-/* Verify SGX quote */
+/* Verify SGX quote (using optional external CA file, or built-in CA if NULL) */
 int verify_sgx_quote(const unsigned char *quote_data, int quote_len, const char *ca_file, 
                      sgx_verification_result_t *result);
 

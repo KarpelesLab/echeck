@@ -2,6 +2,7 @@
 #include "common.h"
 #include "cert_utils.h"
 #include "sgx_quote_parser.h"
+#include "ca.h"
 #include <openssl/sha.h>
 
 /* Initialize verification result structure */
@@ -43,13 +44,22 @@ int verify_sgx_quote(const unsigned char *quote_data, int quote_len, const char 
         return 0;
     }
     
-    /* Create a CA stack if CA file is provided */
+    /* Create a CA stack from either the provided file or built-in CAs */
     if (ca_file) {
         ca_stack = create_ca_stack(ca_file);
         if (!ca_stack) {
+            fprintf(stderr, "Failed to load CA certificates from file, falling back to built-in CA\n");
+            ca_stack = get_trusted_ca_stack();
+        } else {
+            printf("\nLoaded %d CA certificates from %s\n", sk_X509_num(ca_stack), ca_file);
+        }
+    } else {
+        /* Use built-in CA stack */
+        ca_stack = get_trusted_ca_stack();
+        if (!ca_stack) {
+            fprintf(stderr, "Failed to load built-in CA certificates\n");
             return 0;
         }
-        printf("\nLoaded %d CA certificates from %s\n", sk_X509_num(ca_stack), ca_file);
     }
     
     /* Use the SGX quote structure for proper field access */
