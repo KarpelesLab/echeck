@@ -11,3 +11,6 @@ all: $(TARGET)
 
 $(TARGET): $(OBJECTS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LIBS)
+
+clean:
+	$(RM) $(TARGET) $(OBJECTS)
