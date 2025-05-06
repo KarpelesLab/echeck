@@ -128,6 +128,15 @@ typedef struct _sgx_ql_ecdsa_sig_data_t {
     uint8_t               auth_certification_data[];  /* Place holder for both the auth_data_t and certification_data_t. Concatenated in that order. */
 } sgx_ql_ecdsa_sig_data_t;
 
+/* Auth data structure based on observed format */
+typedef struct _sgx_ql_auth_data_t {
+    uint16_t              auth_data_size;       /* Size of auth data (observed: 0x0020) */
+    uint8_t               auth_data[32];        /* 32 bytes of auth data (0x00-0x1F) */
+    uint16_t              cert_type;            /* Certificate type (observed: 0x0005) */
+    uint16_t              cert_data_size;       /* Size of certificate data (observed: ~0x0DDC) */
+    uint8_t               cert_data[];          /* Certificate data (PEM formatted PCK certs) */
+} sgx_ql_auth_data_t;
+
 typedef struct _sgx_quote_signature {
     uint32_t signature_size;     /* Size of the signature */
     uint8_t signature[64];       /* The actual ECDSA signature (r,s components) */
