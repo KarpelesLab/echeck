@@ -17,5 +17,6 @@ if [ "$1" == "test" ]; then
     make run_tests
 fi
 
-echo "Build complete! The echeck binary is in the build directory."
-echo "You can run it with: ./build/echeck"
+echo "Build complete!"
+echo "The echeck binary is in the build directory: ./build/echeck"
+echo "The static library is in the build directory: ./build/libecheck.a"

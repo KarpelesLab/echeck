@@ -1,0 +1,11 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include/echeck
+
+Name: echeck
+Description: SGX Quote Verification Library
+Version: @ECHECK_VERSION@
+Requires.private: libssl libcrypto
+Libs: -L${libdir} -lecheck
+Cflags: -I${includedir}

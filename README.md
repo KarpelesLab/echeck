@@ -89,7 +89,7 @@ Error: Invalid MRENCLAVE format (expected 64 hex characters)
 
 ## Building
 
-The program requires OpenSSL development libraries to be installed.
+The project requires OpenSSL development libraries to be installed.
 
 ### Option 1: Using the build script
 
@@ -99,7 +99,7 @@ Run the build script to compile the project:
 ./build.sh
 ```
 
-This will create a `build` directory with the `echeck` executable.
+This will create a `build` directory with the `echeck` executable and `libecheck.a` static library.
 
 ### Option 2: Using CMake directly
 
@@ -110,7 +110,36 @@ cmake ..
 make
 ```
 
-The executable will be located at `build/echeck`.
+The executable will be located at `build/echeck` and the static library at `build/libecheck.a`.
+
+### Installing
+
+To install the executable, library, and headers:
+
+```
+cd build
+sudo make install
+```
+
+This will install:
+- The `echeck` executable to `/usr/local/bin/`
+- The `libecheck.a` static library to `/usr/local/lib/`
+- The header files to `/usr/local/include/echeck/`
+- The pkg-config file to `/usr/local/lib/pkgconfig/`
+
+### Using the library in your projects
+
+The library can be used in other projects through pkg-config:
+
+```
+gcc -o myapp myapp.c $(pkg-config --cflags --libs echeck)
+```
+
+Or by directly linking:
+
+```
+gcc -o myapp myapp.c -I/usr/local/include/echeck -L/usr/local/lib -lecheck -lssl -lcrypto
+```
 
 ## SGX Quote Fields
 
