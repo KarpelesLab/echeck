@@ -62,16 +62,12 @@ int verify_sgx_quote(const unsigned char *quote_data, int quote_len,
     /* Use the SGX quote structure for proper field access */
     const sgx_quote_t *quote = (const sgx_quote_t *)quote_data;
     
-    /* Display quote information */
-    display_quote_info(quote);
-    
     /* Get signature information */
     uint32_t signature_len = quote->signature_len;
     
     /* Handle cases where signature_len is 0 in the structure */
     if (signature_len == 0 && quote_len > min_quote_size) {
         signature_len = quote_len - min_quote_size;
-        printf("No explicit signature length, calculated from quote size: %u bytes\n", signature_len);
     }
     
     /* Check if signature length is valid */
@@ -82,103 +78,66 @@ int verify_sgx_quote(const unsigned char *quote_data, int quote_len,
         return 0;
     }
     
-    /* Pointer to the signature data */
-    const uint8_t *signature_data = quote->signature;
+    /* Quote signature is at quote->signature, but we don't need a local variable for it */
     
-    /* Analyze the signature section */
-    printf("\n[Signature Section] (%u bytes)\n", signature_len);
-    
-    /* Dump signature data to file for analysis */
-    FILE *sig_fp = fopen("signature.bin", "wb");
-    if (sig_fp) {
-        fwrite(signature_data, 1, signature_len, sig_fp);
-        fclose(sig_fp);
-        printf("Signature data dumped to signature.bin for analysis\n");
-    } else {
-        fprintf(stderr, "Failed to create signature.bin file\n");
-    }
-    
-    /* Start verification checks */
-    printf("\n=====================================================\n");
-    printf("                Verification Results                 \n");
-    printf("=====================================================\n");
+    /* Verification checks - we perform the checks but don't print output
+     * Output is now handled by the main app according to verbosity settings */
     
     /* Check 1: Quote version */
     result->total_checks++;
     if (quote->version == 3 || quote->version == 2 || quote->version == 1) {
-        printf("✅ Quote version is valid: %u\n", quote->version);
         result->version_valid = 1;
         result->checks_passed++;
-    } else {
-        printf("❌ Unsupported quote version: %u\n", quote->version);
     }
     
     /* Check 2: MR_ENCLAVE validation */
     result->total_checks++;
     result->mr_enclave_valid = is_mr_value_valid(quote->report_body.mr_enclave, sizeof(sgx_measurement_t));
     if (result->mr_enclave_valid) {
-        printf("✅ MR_ENCLAVE is valid (not all zeros)\n");
         result->checks_passed++;
-    } else {
-        printf("❌ MR_ENCLAVE is invalid (all zeros)\n");
     }
     
     /* Check 3: MR_SIGNER validation */
     result->total_checks++;
     result->mr_signer_valid = is_mr_value_valid(quote->report_body.mr_signer, sizeof(sgx_measurement_t));
     if (result->mr_signer_valid) {
-        printf("✅ MR_SIGNER is valid (not all zeros)\n");
         result->checks_passed++;
-    } else {
-        printf("❌ MR_SIGNER is invalid (all zeros)\n");
     }
     
-    /* Check 4: Display MR_SIGNER value */
+    /* Check 4: MR_SIGNER check */
     result->total_checks++;
     
-    /* Convert binary MR_SIGNER to hex string for display */
+    /* Convert binary MR_SIGNER to hex string for later use if needed */
     char extracted_mr_signer[97] = {0}; /* 32 bytes * 2 hex chars + null terminator */
     for (int i = 0; i < 32; i++) {
         sprintf(extracted_mr_signer + (i * 2), "%02x", quote->report_body.mr_signer[i]);
     }
     
-    printf("MR_SIGNER: %s\n", extracted_mr_signer);
-    
     /* We've already verified MR_SIGNER is valid (not all zeros) in Check 3 */
-    printf("✅ MR_SIGNER validation check passed\n");
     result->checks_passed++;
     
-    /* Check 5: Display MR_ENCLAVE value */
+    /* Check 5: MR_ENCLAVE value */
     result->total_checks++;
     
-    /* Convert binary MR_ENCLAVE to hex string for display */
+    /* Convert binary MR_ENCLAVE to hex string for storage in result */
     char extracted_mr_enclave[97] = {0}; /* 32 bytes * 2 hex chars + null terminator */
     for (int i = 0; i < 32; i++) {
         sprintf(extracted_mr_enclave + (i * 2), "%02x", quote->report_body.mr_enclave[i]);
     }
     
-    printf("MR_ENCLAVE: %s\n", extracted_mr_enclave);
-    
     /* We've already verified MR_ENCLAVE is valid (not all zeros) in Check 2 */
-    printf("✅ MR_ENCLAVE validation check passed\n");
     result->checks_passed++;
     
     /* Check 6: Signature length validation */
     result->total_checks++;
     if (signature_len > 0 && signature_len <= quote_len - min_quote_size) {
-        printf("✅ Signature length is valid: %u bytes\n", signature_len);
         result->checks_passed++;
-    } else {
-        printf("❌ Invalid signature length: %u bytes\n", signature_len);
     }
     
     /* Check 7: Quote version validation (redundant with check 1, but kept for legacy reasons) */
     result->total_checks++;
     if (quote->version >= 1 && quote->version <= 3) {
-        printf("✅ Quote version is supported: %u\n", quote->version);
         result->checks_passed++;
-    } else {
-        printf("❌ Unsupported quote version: %u\n", quote->version);
     }
     
     /* Check 8: Signature verification */
@@ -186,8 +145,6 @@ int verify_sgx_quote(const unsigned char *quote_data, int quote_len,
     
     /* For ECDSA quotes (v3), verify the signature */
     if (quote->version == 3) {
-        printf("\n[ECDSA Signature Verification]\n");
-        
         /* Compute the quote hash for signature verification */
         unsigned char quote_hash[SHA256_DIGEST_LENGTH];
         unsigned int quote_hash_len = 0;
@@ -207,90 +164,53 @@ int verify_sgx_quote(const unsigned char *quote_data, int quote_len,
                     /* Verify the signature */
                     if (verify_quote_signature_raw(quote_hash, quote_hash_len, 
                                                 sig_r, sig_r_len, sig_s, sig_s_len, attest_key)) {
-                        printf("✅ ECDSA signature verification succeeded\n");
                         result->signature_valid = 1;
                         result->checks_passed++;
-                    } else {
-                        printf("❌ ECDSA signature verification failed\n");
                     }
                     
                     /* Free the signature components */
                     free(sig_r);
                     free(sig_s);
-                } else {
-                    printf("❌ Failed to extract ECDSA signature from quote\n");
                 }
                 
                 /* Free the attestation key */
                 EVP_PKEY_free(attest_key);
-            } else {
-                printf("❌ Failed to extract attestation key from quote\n");
             }
-        } else {
-            printf("❌ Failed to compute quote hash for signature verification\n");
         }
     } else {
         /* For other quote versions, just validate structure */
-        printf("✅ Quote structure is valid (signature verification not implemented for version %u)\n", 
-               quote->version);
         result->checks_passed++;
     }
     
-    /* Summary */
-    printf("\nVerification Summary: %d of %d checks passed\n", 
-           result->checks_passed, result->total_checks);
-    
+    /* Determine if verification passed */
     if (result->checks_passed == result->total_checks) {
-        printf("✅ SGX Quote verification PASSED\n");
         ret_val = 1;
     } else {
-        printf("❌ SGX Quote verification FAILED\n");
         ret_val = 0;
-    }
-    
-    /* Note about verification */
-    if (quote->version == 3) {
-        printf("\nNote: This tool performs ECDSA signature verification for SGX Quote v3.\n");
-        printf("A complete implementation would also verify the QE report and PCK certificate chain.\n");
-    } else {
-        printf("\nNote: This tool provides basic SGX quote validation but does not perform\n");
-        printf("complete cryptographic verification for non-ECDSA quote types.\n");
     }
     
     /* Check 9: Certificate Chain Verification */
     if (quote->version == 3) {
         result->total_checks++;
-        printf("\n[Certificate Chain Verification]\n");
         
         /* Extract the PCK certificate chain */
         if (extract_pck_cert_chain(quote, &result->cert_result)) {
             /* Verify the PCK certificate chain */
             if (verify_pck_cert_chain(&result->cert_result, ca_stack)) {
-                printf("✅ PCK certificate chain verified\n");
                 result->cert_chain_valid = 1;
                 result->checks_passed++;
-            } else {
-                printf("❌ PCK certificate chain verification failed\n");
             }
-        } else {
-            printf("❌ Failed to extract PCK certificate chain\n");
         }
-    } else {
-        printf("Certificate chain verification not implemented for quote version %u\n", quote->version);
     }
     
     /* Check 10: Attestation Key Verification */
     if (quote->version == 3 && result->cert_chain_valid) {
         result->total_checks++;
-        printf("\n[Attestation Key Verification]\n");
         
         /* Verify the attestation key */
         if (verify_attestation_key(quote, &result->cert_result)) {
-            printf("✅ Attestation key verified\n");
             result->attestation_key_valid = 1;
             result->checks_passed++;
-        } else {
-            printf("❌ Attestation key verification failed\n");
         }
     }
     

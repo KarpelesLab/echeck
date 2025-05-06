@@ -1,5 +1,8 @@
 #include "common.h"
 
+/* Initialize global verbose flag */
+int global_verbose_flag = 0;
+
 /* Error handling utility */
 void print_openssl_error(const char *msg) {
     fprintf(stderr, "%s: ", msg);
@@ -21,9 +24,11 @@ uint16_t extract_uint16(const uint8_t *data) {
 
 /* Helper function to print bytes in hex format */
 void print_hex(const char *label, const uint8_t *data, size_t len) {
-    printf("%s: ", label);
-    for (size_t i = 0; i < len; i++) {
-        printf("%02x", data[i]);
+    if (global_verbose_flag) {
+        fprintf(stderr, "%s: ", label);
+        for (size_t i = 0; i < len; i++) {
+            fprintf(stderr, "%02x", data[i]);
+        }
+        fprintf(stderr, "\n");
     }
-    printf("\n");
 }

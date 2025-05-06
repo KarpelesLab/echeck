@@ -7,6 +7,9 @@
 #include <stdint.h>
 #include <openssl/err.h>
 
+/* Global flags for controlling output */
+extern int global_verbose_flag;
+
 /* Error handling utility */
 void print_openssl_error(const char *msg);
 

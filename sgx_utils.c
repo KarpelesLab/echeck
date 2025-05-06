@@ -9,14 +9,17 @@
 #include "sgx_utils.h"
 #include "common.h"
 
-/* Compute a hash of the quote for verification */
+/* Compute a hash of the quote for verification 
+ * This function only outputs when verbose mode is active */
 void dump_buffer(const char *name, const unsigned char *data, size_t len) {
-    printf("%s (%zu bytes): ", name, len);
-    for (size_t i = 0; i < len && i < 32; i++) {
-        printf("%02x", data[i]);
+    if (global_verbose_flag) {
+        fprintf(stderr, "%s (%zu bytes): ", name, len);
+        for (size_t i = 0; i < len && i < 32; i++) {
+            fprintf(stderr, "%02x", data[i]);
+        }
+        if (len > 32) fprintf(stderr, "...");
+        fprintf(stderr, "\n");
     }
-    if (len > 32) printf("...");
-    printf("\n");
 }
 
 /* Extract the attestation key from the quote signature data */
@@ -35,19 +38,7 @@ EVP_PKEY *extract_attestation_key(const sgx_quote_t *quote) {
     /* This is a 64-byte buffer containing the x,y coordinates of the EC point */
     const uint8_t *pub_key_raw = sig_data->attest_pub_key;
     
-    /* Print attestation key components for debugging */
-    printf("[Attestation Key Components]\n");
-    printf("X: ");
-    for (int i = 0; i < 32; i++) {
-        printf("%02x", pub_key_raw[i]);
-    }
-    printf("\n");
-    
-    printf("Y: ");
-    for (int i = 0; i < 32; i++) {
-        printf("%02x", pub_key_raw[i + 32]);
-    }
-    printf("\n");
+    /* Attestation key components processing (formerly debug output) */
     
     /* Create EVP_PKEY context for creating keys with the modern API */
     EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL);
@@ -148,7 +139,9 @@ EVP_PKEY *extract_attestation_key(const sgx_quote_t *quote) {
     EC_KEY_free(ec_key);
     EVP_PKEY_free(params);
     
-    printf("Successfully extracted attestation public key\n");
+    if (global_verbose_flag) {
+        fprintf(stderr, "Successfully extracted attestation public key\n");
+    }
     return pkey;
 }
 
@@ -170,18 +163,22 @@ int extract_ecdsa_signature(const sgx_quote_t *quote,
     const uint8_t *sig_raw = sig_data->sig;
     
     /* Print signature components for debugging */
-    printf("[ECDSA Signature Components]\n");
-    printf("R: ");
-    for (int i = 0; i < 32; i++) {
-        printf("%02x", sig_raw[i]);
+    if (global_verbose_flag) {
+        fprintf(stderr, "[ECDSA Signature Components]\n");
+        fprintf(stderr, "R: ");
+        for (int i = 0; i < 32; i++) {
+            fprintf(stderr, "%02x", sig_raw[i]);
+        }
+        fprintf(stderr, "\n");
     }
-    printf("\n");
     
-    printf("S: ");
-    for (int i = 0; i < 32; i++) {
-        printf("%02x", sig_raw[i + 32]);
+    if (global_verbose_flag) {
+        fprintf(stderr, "S: ");
+        for (int i = 0; i < 32; i++) {
+            fprintf(stderr, "%02x", sig_raw[i + 32]);
+        }
+        fprintf(stderr, "\n");
     }
-    printf("\n");
     
     /* Allocate memory for the signature components */
     *sig_r = (unsigned char *)malloc(32);
@@ -236,12 +233,7 @@ int compute_quote_hash_for_sig(const sgx_quote_t *quote, unsigned char *hash, un
         return 0;
     }
     
-    /* Display hash for debugging */
-    printf("Quote hash for verification: ");
-    for (unsigned int i = 0; i < *hash_len; i++) {
-        printf("%02x", hash[i]);
-    }
-    printf("\n");
+    /* Hash computation complete */
     
     /* Clean up */
     EVP_MD_CTX_free(mdctx);
@@ -303,10 +295,8 @@ int verify_quote_signature_raw(const unsigned char *quote_hash, unsigned int quo
         int ec_result = ECDSA_do_verify(quote_hash, quote_hash_len, sig, ec_key);
         
         if (ec_result == 1) {
-            printf("ECDSA signature verification succeeded (EC_KEY method)\n");
             result = 1;
         } else if (ec_result == 0) {
-            printf("ECDSA signature verification failed (EC_KEY method)\n");
             /* We'll fall back to the EVP method if available */
         } else {
             print_openssl_error("Error during ECDSA signature verification (EC_KEY method)");
@@ -330,10 +320,9 @@ int verify_quote_signature_raw(const unsigned char *quote_hash, unsigned int quo
                     int evp_result = EVP_DigestVerifyFinal(md_ctx, sig_der, sig_der_len);
                     
                     if (evp_result == 1) {
-                        printf("ECDSA signature verification succeeded (EVP method)\n");
                         result = 1;
                     } else if (evp_result == 0) {
-                        printf("ECDSA signature verification failed (EVP method)\n");
+                        /* EVP verification failed */
                     } else {
                         print_openssl_error("Error during ECDSA signature verification (EVP method)");
                     }
@@ -349,11 +338,6 @@ int verify_quote_signature_raw(const unsigned char *quote_hash, unsigned int quo
     if (sig_der) OPENSSL_free(sig_der);
     ECDSA_SIG_free(sig);
     
-    if (result) {
-        printf("ECDSA signature verification succeeded\n");
-        return 1;
-    } else {
-        printf("ECDSA signature verification failed with all methods\n");
-        return 0;
-    }
+    /* Return the verification result */
+    return result;
 }

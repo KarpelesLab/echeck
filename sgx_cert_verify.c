@@ -22,7 +22,7 @@ void init_cert_verification_result(sgx_cert_verification_result_t *result) {
 int extract_pck_cert_chain(const sgx_quote_t *quote, sgx_cert_verification_result_t *result) {
     /* First, ensure this is a v3 ECDSA quote */
     if (quote->version != 3) {
-        fprintf(stderr, "PCK certificate chain extraction only supported for ECDSA Quote v3\n");
+        fprintf(stderr, "Error: PCK certificate chain extraction only supported for ECDSA Quote v3\n");
         return 0;
     }
     
@@ -40,13 +40,13 @@ int extract_pck_cert_chain(const sgx_quote_t *quote, sgx_cert_verification_resul
     
     /* Verify we have valid auth data */
     if (auth_data->auth_data_size != 0x20) {
-        fprintf(stderr, "Unexpected auth data size: 0x%04x (expected 0x0020)\n", auth_data->auth_data_size);
+        fprintf(stderr, "Error: Unexpected auth data size: 0x%04x (expected 0x0020)\n", auth_data->auth_data_size);
         return 0;
     }
     
     /* Check cert type */
     if (auth_data->cert_type != 0x0005) {
-        fprintf(stderr, "Unexpected certificate type: 0x%04x (expected 0x0005)\n", auth_data->cert_type);
+        fprintf(stderr, "Error: Unexpected certificate type: 0x%04x (expected 0x0005)\n", auth_data->cert_type);
         return 0;
     }
     
@@ -54,7 +54,9 @@ int extract_pck_cert_chain(const sgx_quote_t *quote, sgx_cert_verification_resul
     const uint8_t *cert_data = auth_data->cert_data;
     uint16_t cert_data_size = auth_data->cert_data_size;
     
-    printf("Found PCK certificate chain (%u bytes)\n", cert_data_size);
+    if (global_verbose_flag) {
+        fprintf(stderr, "Found PCK certificate chain (%u bytes)\n", cert_data_size);
+    }
     
     /* Create a BIO for reading the certificate data */
     BIO *bio = BIO_new_mem_buf(cert_data, cert_data_size);
@@ -74,7 +76,9 @@ int extract_pck_cert_chain(const sgx_quote_t *quote, sgx_cert_verification_resul
         /* Get certificate subject name */
         char subject[256];
         X509_NAME_oneline(X509_get_subject_name(cert), subject, sizeof(subject));
-        printf("Certificate %d: %s\n", cert_count, subject);
+        if (global_verbose_flag) {
+            fprintf(stderr, "Certificate %d: %s\n", cert_count, subject);
+        }
         
         /* Store the certificates based on their position in the chain */
         if (cert_count == 1) {
@@ -107,7 +111,9 @@ int extract_pck_cert_chain(const sgx_quote_t *quote, sgx_cert_verification_resul
     /* Update the result */
     result->cert_count = cert_count;
     
-    printf("Successfully extracted %d certificates from the quote\n", cert_count);
+    if (global_verbose_flag) {
+        fprintf(stderr, "Successfully extracted %d certificates from the quote\n", cert_count);
+    }
     return 1;
 }
 
@@ -189,11 +195,10 @@ int verify_pck_cert_chain(sgx_cert_verification_result_t *result, STACK_OF(X509)
     /* Perform the verification */
     int verify_result = X509_verify_cert(ctx);
     if (verify_result == 1) {
-        printf("✅ PCK certificate chain verified successfully\n");
         result->chain_verified = 1;
     } else {
         int error = X509_STORE_CTX_get_error(ctx);
-        fprintf(stderr, "❌ PCK certificate chain verification failed: %s\n", 
+        fprintf(stderr, "Error: PCK certificate chain verification failed: %s\n", 
                 X509_verify_cert_error_string(error));
     }
     
@@ -236,9 +241,8 @@ int verify_attestation_key(const sgx_quote_t *quote, sgx_cert_verification_resul
     if (key_type_match) {
         /* The attestation key is the same type as the PCK certificate key */
         result->attestation_key_verified = 1;
-        printf("✅ Attestation key verified against PCK certificate\n");
     } else {
-        fprintf(stderr, "❌ Attestation key type (%d) does not match PCK certificate key type (%d)\n",
+        fprintf(stderr, "Error: Attestation key type (%d) does not match PCK certificate key type (%d)\n",
                 EVP_PKEY_get_base_id(attest_key), EVP_PKEY_get_base_id(cert_key));
     }
     

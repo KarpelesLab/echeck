@@ -59,16 +59,14 @@ int extract_sgx_quote(X509 *cert, sgx_quote_buffer_t *quote_buffer) {
             uint32_t quote_size = extract_uint32((uint8_t*)&header->size);
             uint32_t reserved = extract_uint32((uint8_t*)&header->reserved);
             
-            /* Print header information */
-            printf("Quote Header: Version=%u, Type=%u, Size=%u, Reserved=%u\n", 
-                   header_version, header_type, quote_size, reserved);
+            /* Header information parsed (not printed in the updated Unix-like version) */
             
             /* Verify the size makes sense */
             if (quote_size > raw_len - sizeof(sgx_quote_header_t)) {
                 fprintf(stderr, "SGX quote size in header (%u) exceeds available data (%d)\n", 
                         quote_size, raw_len - (int)sizeof(sgx_quote_header_t));
                 quote_size = raw_len - sizeof(sgx_quote_header_t);
-                printf("Adjusted quote size to %u bytes\n", quote_size);
+                /* Adjusted quote size */
             }
             
             /* Allocate memory for the quote data (excluding the header) */
@@ -87,7 +85,7 @@ int extract_sgx_quote(X509 *cert, sgx_quote_buffer_t *quote_buffer) {
             if (fp_raw) {
                 fwrite(raw_data, 1, raw_len, fp_raw);
                 fclose(fp_raw);
-                printf("Full quote with header dumped to quote_with_header.bin (%d bytes)\n", raw_len);
+                /* Full quote saved to file */
             }
             
             return 1;
@@ -159,82 +157,9 @@ X509 *parse_quote_cert(const uint8_t *cert_data, size_t cert_data_size) {
     return cert;
 }
 
-/* Display quote information */
+/* Display quote information - this function is now a no-op as the output
+ * is handled by the main application according to verbosity settings */
 void display_quote_info(const sgx_quote_t *quote) {
-    printf("\n=====================================================\n");
-    printf("                  SGX Quote Analysis                 \n");
-    printf("=====================================================\n");
-    
-    printf("\n[Quote Header]\n");
-    printf("Version:          %u\n", quote->version);
-    printf("Sign Type:        %u\n", quote->sign_type);
-    
-    char epid_group_id_str[9] = {0}; /* 4 bytes to 8 hex chars + null */
-    sprintf(epid_group_id_str, "%02x%02x%02x%02x", 
-            quote->epid_group_id[0], quote->epid_group_id[1], 
-            quote->epid_group_id[2], quote->epid_group_id[3]);
-    printf("EPID Group ID:    0x%s\n", epid_group_id_str);
-    
-    printf("QE SVN:           %u\n", quote->qe_svn);
-    printf("PCE SVN:          %u\n", quote->pce_svn);
-    printf("XEID:             0x%08x\n", quote->xeid);
-    printf("Basename:         ");
-    for (int i = 0; i < 16 && i < 32; i++) {
-        printf("%02x", quote->basename.name[i]);
-    }
-    printf("...\n");
-    
-    printf("\n[Report Body]\n");
-    printf("CPU SVN:          ");
-    for (int i = 0; i < SGX_CPUSVN_SIZE; i++) {
-        printf("%02x", quote->report_body.cpu_svn.svn[i]);
-    }
-    printf("\n");
-    printf("Misc Select:      0x%08x\n", quote->report_body.misc_select);
-    
-    /* Print ISV Extended Product ID */
-    printf("ISV Ext Prod ID:  ");
-    for (int i = 0; i < sizeof(sgx_isvext_prod_id_t); i++) {
-        printf("%02x", quote->report_body.isv_ext_prod_id[i]);
-    }
-    printf("\n");
-    
-    /* Print Attributes */
-    printf("Attributes:       ");
-    for (int i = 0; i < sizeof(sgx_attributes_t); i++) {
-        printf("%02x", quote->report_body.attributes[i]);
-    }
-    printf("\n");
-    
-    /* Print MR_ENCLAVE (hash of enclave contents) */
-    print_hex("MR_ENCLAVE", quote->report_body.mr_enclave, sizeof(sgx_measurement_t));
-    
-    /* Print MR_SIGNER (hash of signer's public key) */
-    print_hex("MR_SIGNER", quote->report_body.mr_signer, sizeof(sgx_measurement_t));
-    
-    /* Print CONFIG_ID (first 16 bytes) */
-    printf("CONFIG_ID:        ");
-    for (int i = 0; i < 16 && i < sizeof(sgx_config_id_t); i++) {
-        printf("%02x", quote->report_body.config_id[i]);
-    }
-    printf("...\n");
-    
-    /* Print ISV details */
-    printf("ISV Product ID:   %u\n", quote->report_body.isv_prod_id);
-    printf("ISV SVN:          %u\n", quote->report_body.isv_svn);
-    printf("CONFIG SVN:       %u\n", quote->report_body.config_svn);
-    
-    /* Print ISV Family ID */
-    printf("ISV Family ID:    ");
-    for (int i = 0; i < sizeof(sgx_isvfamily_id_t); i++) {
-        printf("%02x", quote->report_body.isv_family_id[i]);
-    }
-    printf("\n");
-    
-    /* Print the full report data (user data) */
-    printf("Report Data:      ");
-    for (int i = 0; i < sizeof(sgx_report_data_t); i++) {
-        printf("%02x", quote->report_body.report_data[i]);
-    }
-    printf("\n");
+    /* This function used to print the quote details, now it's a no-op */
+    (void)quote; /* Prevent unused parameter warning */
 }
