@@ -89,13 +89,28 @@ Error: Invalid MRENCLAVE format (expected 64 hex characters)
 
 ## Building
 
-To build the program, simply run:
+The program requires OpenSSL development libraries to be installed.
+
+### Option 1: Using the build script
+
+Run the build script to compile the project:
 
 ```
+./build.sh
+```
+
+This will create a `build` directory with the `echeck` executable.
+
+### Option 2: Using CMake directly
+
+```
+mkdir -p build
+cd build
+cmake ..
 make
 ```
 
-The program requires OpenSSL development libraries to be installed.
+The executable will be located at `build/echeck`.
 
 ## SGX Quote Fields
 
@@ -125,10 +140,25 @@ The tool extracts and displays the following fields from SGX quotes:
 
 ## Testing
 
-The tool includes a test framework to validate SGX quotes from certificates:
+The tool includes a test framework to validate SGX quotes from certificates using CMake's testing functionality.
 
+**Option 1**: Using the build script:
 ```
-make test
+./build.sh test
+```
+
+**Option 2**: Using CMake's testing capabilities:
+```
+cd build
+make run_tests     # Run all tests with nice output formatting
+```
+
+**Option 3**: Using CTest directly:
+```
+cd build
+ctest              # Run all tests
+ctest -V           # Run all tests with verbose output
+ctest -R test_sample  # Run specific test
 ```
 
 This will run the verification on all certificate files in the `test/` directory
