@@ -1,2 +1,3 @@
 /echeck
 *.o
+*.bin
