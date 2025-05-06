@@ -14,28 +14,28 @@ pkg_check_modules(OPENSSL REQUIRED libssl libcrypto)
 
 # Library source files (everything except main.c)
 set(LIB_SOURCES
-    common.c
-    cert_utils.c
-    sgx_quote_parser.c
-    sgx_quote_verify.c
-    sgx_utils.c
-    sgx_cert_verify.c
-    ca.c
+    src/lib/common.c
+    src/lib/cert_utils.c
+    src/lib/sgx_quote_parser.c
+    src/lib/sgx_quote_verify.c
+    src/lib/sgx_utils.c
+    src/lib/sgx_cert_verify.c
+    src/lib/ca.c
 )
 
 # Create static library
 add_library(libecheck STATIC ${LIB_SOURCES})
 # Set output name to "echeck" (without "lib" prefix that CMake would add)
 set_target_properties(libecheck PROPERTIES OUTPUT_NAME echeck)
-target_include_directories(libecheck PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(libecheck PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(libecheck PRIVATE ${OPENSSL_INCLUDE_DIRS})
 target_link_libraries(libecheck PRIVATE ${OPENSSL_LIBRARIES})
 
 # Add executable target
-add_executable(echeck main.c)
+add_executable(echeck src/main/main.c)
 
 # Link against our static library
-target_include_directories(echeck PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(echeck PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(echeck PRIVATE ${OPENSSL_INCLUDE_DIRS})
 target_link_libraries(echeck PRIVATE libecheck ${OPENSSL_LIBRARIES})
 
@@ -58,16 +58,9 @@ install(TARGETS libecheck
         LIBRARY DESTINATION lib)
 
 # Install headers
-install(FILES 
-    sgx_types.h
-    common.h
-    cert_utils.h
-    sgx_quote_parser.h
-    sgx_quote_verify.h
-    sgx_utils.h
-    sgx_cert_verify.h
-    ca.h
-    DESTINATION include/echeck)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/echeck
+        DESTINATION include
+        FILES_MATCHING PATTERN "*.h")
 
 # Generate and install pkg-config file
 configure_file(
