@@ -64,7 +64,7 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/echeck
 
 # Generate and install pkg-config file
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/echeck.pc.in
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/echeck.pc.in
     ${CMAKE_CURRENT_BINARY_DIR}/echeck.pc
     @ONLY
 )
