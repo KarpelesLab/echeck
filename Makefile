@@ -17,5 +17,24 @@ $(TARGET): $(OBJECTS)
 %.o: %.c $(HEADERS)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+test: $(TARGET)
+	@echo "Running tests on all certificate files in test directory..."
+	@if [ -f ca.pem ]; then \
+		echo "Using CA file: ca.pem"; \
+		for file in test/*.pem; do \
+			echo "\n\n===== Testing $$file with CA ====="; \
+			./$(TARGET) $$file ca.pem || exit 1; \
+		done; \
+	else \
+		echo "CA file not found, using built-in CA"; \
+		for file in test/*.pem; do \
+			echo "\n\n===== Testing $$file with built-in CA ====="; \
+			./$(TARGET) $$file || exit 1; \
+		done; \
+	fi
+	@echo "\nAll tests passed successfully!"
+
 clean:
 	$(RM) $(TARGET) $(OBJECTS)
+
+.PHONY: all clean test
