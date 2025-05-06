@@ -80,14 +80,6 @@ int extract_sgx_quote(X509 *cert, sgx_quote_buffer_t *quote_buffer) {
             /* Copy just the quote data (after the header) */
             memcpy(quote_buffer->data, raw_data + sizeof(sgx_quote_header_t), quote_buffer->length);
             
-            /* For debugging, also save the raw data with header */
-            FILE *fp_raw = fopen("quote_with_header.bin", "wb");
-            if (fp_raw) {
-                fwrite(raw_data, 1, raw_len, fp_raw);
-                fclose(fp_raw);
-                /* Full quote saved to file */
-            }
-            
             return 1;
         }
     }

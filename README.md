@@ -47,7 +47,6 @@ MRSIGNER: 976aa9f931b8a16e01e01895d627e3ee96dce5478ebbbc77e120a25c79fe6016
 ISV Product ID: 1
 ISV SVN: 1
 SGX Quote extracted: 4600 bytes
-Quote saved to quote.bin
 Loaded 1 built-in CA certificates for SGX validation
 Successfully extracted attestation public key
 [ECDSA Signature Components]

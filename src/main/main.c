@@ -135,13 +135,6 @@ int main(int argc, char *argv[]) {
     if (!opts.quiet) {
         if (opts.verbose) {
             fprintf(stderr, "SGX Quote extracted: %d bytes\n", quote_buffer.length);
-            /* Save quote to file for analysis in verbose mode */
-            FILE *fp = fopen("quote.bin", "wb");
-            if (fp) {
-                fwrite(quote_buffer.data, 1, quote_buffer.length, fp);
-                fclose(fp);
-                fprintf(stderr, "Quote saved to quote.bin\n");
-            }
         }
     }
     
