@@ -209,40 +209,48 @@ int verify_sgx_quote(const unsigned char *quote_data, int quote_len, const char 
     
     /* For ECDSA quotes (v3), verify the signature */
     if (quote->version == 3) {
-        /* Compute the quote hash using the function from sgx_quote_parser.h */
+        printf("\n[ECDSA Signature Verification]\n");
+        
+        /* Compute the quote hash for signature verification */
         unsigned char quote_hash[SHA256_DIGEST_LENGTH];
         unsigned int quote_hash_len = 0;
         
-        if (compute_quote_hash(quote, quote_hash, &quote_hash_len)) {
+        if (compute_quote_hash_for_sig(quote, quote_hash, &quote_hash_len)) {
             /* Extract the attestation key from the quote */
             EVP_PKEY *attest_key = extract_attestation_key(quote);
             
             if (attest_key) {
-                /* Verify the signature using the attestation key */
-                if (verify_quote_signature(quote, quote_hash, quote_hash_len, attest_key)) {
-                    printf("✅ Quote signature verified successfully\n");
-                    result->signature_valid = 1;
-                    result->checks_passed++;
+                /* Extract the signature components */
+                unsigned char *sig_r = NULL;
+                unsigned char *sig_s = NULL;
+                unsigned int sig_r_len = 0;
+                unsigned int sig_s_len = 0;
+                
+                if (extract_ecdsa_signature(quote, &sig_r, &sig_r_len, &sig_s, &sig_s_len)) {
+                    /* Verify the signature */
+                    if (verify_quote_signature_raw(quote_hash, quote_hash_len, 
+                                                sig_r, sig_r_len, sig_s, sig_s_len, attest_key)) {
+                        printf("✅ ECDSA signature verification succeeded\n");
+                        result->signature_valid = 1;
+                        result->checks_passed++;
+                    } else {
+                        printf("❌ ECDSA signature verification failed\n");
+                    }
+                    
+                    /* Free the signature components */
+                    free(sig_r);
+                    free(sig_s);
                 } else {
-                    printf("❌ Quote signature verification failed\n");
-                    /* For development purposes, temporarily pass this check even if verification fails */
-                    printf("⚠️ BYPASSING for testing: Counting signature check as passed\n");
-                    result->checks_passed++;
+                    printf("❌ Failed to extract ECDSA signature from quote\n");
                 }
                 
                 /* Free the attestation key */
                 EVP_PKEY_free(attest_key);
             } else {
                 printf("❌ Failed to extract attestation key from quote\n");
-                /* For development purposes, temporarily pass this check even if key extraction fails */
-                printf("⚠️ BYPASSING for testing: Counting signature check as passed\n");
-                result->checks_passed++;
             }
         } else {
             printf("❌ Failed to compute quote hash for signature verification\n");
-            /* For development purposes, temporarily pass this check */
-            printf("⚠️ BYPASSING for testing: Counting signature check as passed\n");
-            result->checks_passed++;
         }
     } else {
         /* For other quote versions, just validate structure */
