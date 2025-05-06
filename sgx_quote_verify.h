@@ -20,8 +20,8 @@ typedef struct {
     sgx_cert_verification_result_t cert_result; /* Certificate verification details */
 } sgx_verification_result_t;
 
-/* Verify SGX quote (using optional external CA file, or built-in CA if NULL) */
-int verify_sgx_quote(const unsigned char *quote_data, int quote_len, const char *ca_file, 
+/* Verify SGX quote using built-in CA certificates */
+int verify_sgx_quote(const unsigned char *quote_data, int quote_len,
                      sgx_verification_result_t *result);
 
 /* Verify quote signature using public key from certificate */

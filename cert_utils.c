@@ -64,52 +64,7 @@ int compute_pubkey_hash(X509 *cert, unsigned char *hash, unsigned int *hash_len)
     return result;
 }
 
-/* Create a CA stack from CA file */
-STACK_OF(X509) *create_ca_stack(const char *ca_file) {
-    BIO *ca_bio = NULL;
-    X509 *ca_cert = NULL;
-    STACK_OF(X509) *ca_stack = NULL;
-    
-    /* Create a new certificate stack for CA certificates */
-    ca_stack = sk_X509_new_null();
-    if (!ca_stack) {
-        print_openssl_error("Error creating CA certificate stack");
-        return NULL;
-    }
-    
-    /* Load CA certificates from the CA file */
-    ca_bio = BIO_new_file(ca_file, "r");
-    if (!ca_bio) {
-        print_openssl_error("Error opening CA file");
-        sk_X509_pop_free(ca_stack, X509_free);
-        return NULL;
-    }
-    
-    /* Read all certificates from the CA file */
-    while ((ca_cert = PEM_read_bio_X509(ca_bio, NULL, NULL, NULL)) != NULL) {
-        /* Add the CA certificate to the stack */
-        if (!sk_X509_push(ca_stack, ca_cert)) {
-            print_openssl_error("Error adding CA certificate to stack");
-            X509_free(ca_cert);
-            BIO_free(ca_bio);
-            sk_X509_pop_free(ca_stack, X509_free);
-            return NULL;
-        }
-    }
-    
-    /* Check if any CA certificates were loaded */
-    if (sk_X509_num(ca_stack) == 0) {
-        fprintf(stderr, "No CA certificates loaded from %s\n", ca_file);
-        BIO_free(ca_bio);
-        sk_X509_pop_free(ca_stack, X509_free);
-        return NULL;
-    }
-    
-    /* Free the BIO */
-    BIO_free(ca_bio);
-    
-    return ca_stack;
-}
+/* Function create_ca_stack has been removed as we now only use built-in CAs */
 
 /* Verify an ECDSA signature */
 int verify_ecdsa_signature(const unsigned char *data, size_t data_len, 

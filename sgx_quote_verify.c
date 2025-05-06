@@ -35,7 +35,7 @@ static int is_mr_value_valid(const unsigned char *mr_value, size_t size) {
 }
 
 /* Verify SGX quote */
-int verify_sgx_quote(const unsigned char *quote_data, int quote_len, const char *ca_file,
+int verify_sgx_quote(const unsigned char *quote_data, int quote_len,
                      sgx_verification_result_t *result) {
     STACK_OF(X509) *ca_stack = NULL;
     int ret_val = 0;
@@ -52,22 +52,11 @@ int verify_sgx_quote(const unsigned char *quote_data, int quote_len, const char 
         return 0;
     }
     
-    /* Create a CA stack from either the provided file or built-in CAs */
-    if (ca_file) {
-        ca_stack = create_ca_stack(ca_file);
-        if (!ca_stack) {
-            fprintf(stderr, "Failed to load CA certificates from file, falling back to built-in CA\n");
-            ca_stack = get_trusted_ca_stack();
-        } else {
-            printf("\nLoaded %d CA certificates from %s\n", sk_X509_num(ca_stack), ca_file);
-        }
-    } else {
-        /* Use built-in CA stack */
-        ca_stack = get_trusted_ca_stack();
-        if (!ca_stack) {
-            fprintf(stderr, "Failed to load built-in CA certificates\n");
-            return 0;
-        }
+    /* Use built-in CA stack */
+    ca_stack = get_trusted_ca_stack();
+    if (!ca_stack) {
+        fprintf(stderr, "Failed to load built-in CA certificates\n");
+        return 0;
     }
     
     /* Use the SGX quote structure for proper field access */

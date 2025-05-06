@@ -18,7 +18,6 @@ int main(int argc, char *argv[]) {
     }
     
     const char *cert_file = argv[1];
-    const char *ca_file = NULL; /* Always use built-in CA */
     
     /* Initialize OpenSSL */
     OpenSSL_add_all_algorithms();
@@ -99,10 +98,10 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Failed to compute public key hash\n");
         }
         
-        /* Verify the SGX quote with either provided CA file or built-in CA */
+        /* Verify the SGX quote with built-in CA */
         sgx_verification_result_t result;
         
-        if (verify_sgx_quote(quote_buffer.data, quote_buffer.length, ca_file, &result)) {
+        if (verify_sgx_quote(quote_buffer.data, quote_buffer.length, &result)) {
             printf("SGX quote verification successful\n");
         } else {
             fprintf(stderr, "SGX quote verification failed\n");
