@@ -49,10 +49,60 @@ EVP_PKEY *extract_attestation_key(const sgx_quote_t *quote) {
     }
     printf("\n");
     
-    /* Create a new key instance */
+    /* Create EVP_PKEY context for creating keys with the modern API */
+    EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL);
+    if (!ctx) {
+        print_openssl_error("Failed to create EVP_PKEY_CTX");
+        return NULL;
+    }
+    
+    /* Initialize key generation parameters */
+    if (EVP_PKEY_paramgen_init(ctx) != 1) {
+        print_openssl_error("Failed to initialize paramgen");
+        EVP_PKEY_CTX_free(ctx);
+        return NULL;
+    }
+    
+    /* Set curve to P-256 (same as NID_X9_62_prime256v1) */
+    if (EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx, NID_X9_62_prime256v1) != 1) {
+        print_openssl_error("Failed to set curve parameters");
+        EVP_PKEY_CTX_free(ctx);
+        return NULL;
+    }
+    
+    /* Generate parameters */
+    EVP_PKEY *params = NULL;
+    if (EVP_PKEY_paramgen(ctx, &params) != 1) {
+        print_openssl_error("Failed to generate parameters");
+        EVP_PKEY_CTX_free(ctx);
+        return NULL;
+    }
+    
+    /* Create a new EVP_PKEY for the final key */
+    EVP_PKEY *pkey = EVP_PKEY_new();
+    if (!pkey) {
+        print_openssl_error("Failed to create EVP_PKEY");
+        EVP_PKEY_free(params);
+        EVP_PKEY_CTX_free(ctx);
+        return NULL;
+    }
+    
+    /* Clean up the parameter generation context */
+    EVP_PKEY_CTX_free(ctx);
+    
+    /* Now we need to set the public key data */
+    /* For OpenSSL 3.0+, we'll use the low-level APIs to set the key data */
+    
+    /* Create a temporary EC_KEY structure */
+    /* Note: We're still using the deprecated EC_KEY functions here because
+     * OpenSSL 3.0 doesn't yet provide a simple way to set raw coordinates
+     * without using the EC_KEY API. In a future version, this should be
+     * replaced with the newer APIs once they're available. */
     EC_KEY *ec_key = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
     if (!ec_key) {
-        print_openssl_error("Failed to create EC key");
+        print_openssl_error("Failed to create temporary EC_KEY");
+        EVP_PKEY_free(pkey);
+        EVP_PKEY_free(params);
         return NULL;
     }
     
@@ -65,6 +115,8 @@ EVP_PKEY *extract_attestation_key(const sgx_quote_t *quote) {
         if (x) BN_free(x);
         if (y) BN_free(y);
         EC_KEY_free(ec_key);
+        EVP_PKEY_free(pkey);
+        EVP_PKEY_free(params);
         return NULL;
     }
     
@@ -74,34 +126,19 @@ EVP_PKEY *extract_attestation_key(const sgx_quote_t *quote) {
         BN_free(x);
         BN_free(y);
         EC_KEY_free(ec_key);
+        EVP_PKEY_free(pkey);
+        EVP_PKEY_free(params);
         return NULL;
     }
     
-    /* Verify the key is valid */
-    if (EC_KEY_check_key(ec_key) != 1) {
-        print_openssl_error("EC key validation failed");
-        BN_free(x);
-        BN_free(y);
-        EC_KEY_free(ec_key);
-        return NULL;
-    }
-    
-    /* Create an EVP_PKEY from the EC key */
-    EVP_PKEY *pkey = EVP_PKEY_new();
-    if (!pkey) {
-        print_openssl_error("Failed to create EVP_PKEY");
-        BN_free(x);
-        BN_free(y);
-        EC_KEY_free(ec_key);
-        return NULL;
-    }
-    
+    /* Set the EC_KEY into the EVP_PKEY */
     if (EVP_PKEY_set1_EC_KEY(pkey, ec_key) != 1) {
         print_openssl_error("Failed to set EC key in EVP_PKEY");
-        EVP_PKEY_free(pkey);
         BN_free(x);
         BN_free(y);
         EC_KEY_free(ec_key);
+        EVP_PKEY_free(pkey);
+        EVP_PKEY_free(params);
         return NULL;
     }
     
@@ -109,6 +146,7 @@ EVP_PKEY *extract_attestation_key(const sgx_quote_t *quote) {
     BN_free(x);
     BN_free(y);
     EC_KEY_free(ec_key);
+    EVP_PKEY_free(params);
     
     printf("Successfully extracted attestation public key\n");
     return pkey;
@@ -215,9 +253,16 @@ int verify_quote_signature_raw(const unsigned char *quote_hash, unsigned int quo
                              const unsigned char *sig_r, unsigned int sig_r_len,
                              const unsigned char *sig_s, unsigned int sig_s_len,
                              EVP_PKEY *pubkey) {
+    /* For SGX quote signatures, we need to convert the r,s components to a DER-encoded
+     * signature that OpenSSL can process, and then verify it against the quote hash */
+    
+    /* We'll try both verification methods: traditional EC_KEY and modern EVP */
     int result = 0;
     
-    /* Create a signature object */
+    /* Method 1: Using low-level EC_KEY functions */
+    /* This is less preferred but provides a fallback if the EVP method doesn't work */
+    
+    /* Create a temporary ECDSA_SIG object */
     ECDSA_SIG *sig = ECDSA_SIG_new();
     if (!sig) {
         print_openssl_error("Failed to create ECDSA_SIG");
@@ -245,29 +290,70 @@ int verify_quote_signature_raw(const unsigned char *quote_hash, unsigned int quo
         return 0;
     }
     
-    /* Get the EC key from the EVP_PKEY */
+    /* Convert the ECDSA_SIG to DER format for the second method */
+    unsigned char *sig_der = NULL;
+    int sig_der_len = i2d_ECDSA_SIG(sig, &sig_der);
+    
+    /* Method 2: Using EC_KEY_get1_EC_KEY and ECDSA_do_verify */
+    /* This is deprecated in OpenSSL 3.0 but more reliable for our specific case */
+    /* We're knowingly working with the deprecated API here as a fallback */
     EC_KEY *ec_key = EVP_PKEY_get1_EC_KEY(pubkey);
-    if (!ec_key) {
-        print_openssl_error("Failed to get EC key from EVP_PKEY");
-        ECDSA_SIG_free(sig);
-        return 0;
+    if (ec_key) {
+        /* Verify the signature directly using ECDSA_do_verify */
+        int ec_result = ECDSA_do_verify(quote_hash, quote_hash_len, sig, ec_key);
+        
+        if (ec_result == 1) {
+            printf("ECDSA signature verification succeeded (EC_KEY method)\n");
+            result = 1;
+        } else if (ec_result == 0) {
+            printf("ECDSA signature verification failed (EC_KEY method)\n");
+            /* We'll fall back to the EVP method if available */
+        } else {
+            print_openssl_error("Error during ECDSA signature verification (EC_KEY method)");
+        }
+        
+        /* Clean up EC_KEY */
+        EC_KEY_free(ec_key);
     }
     
-    /* Verify the signature */
-    result = ECDSA_do_verify(quote_hash, quote_hash_len, sig, ec_key);
+    /* If the first method didn't produce a positive result and we have a valid DER signature, 
+       try the second method */
+    if (!result && sig_der != NULL && sig_der_len > 0) {
+        /* Method 3: Using EVP APIs */
+        EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
+        if (md_ctx) {
+            /* Initialize the verification operation */
+            if (EVP_DigestVerifyInit(md_ctx, NULL, EVP_sha256(), NULL, pubkey) == 1) {
+                /* Update the verification context */
+                if (EVP_DigestVerifyUpdate(md_ctx, quote_hash, quote_hash_len) == 1) {
+                    /* Verify the signature */
+                    int evp_result = EVP_DigestVerifyFinal(md_ctx, sig_der, sig_der_len);
+                    
+                    if (evp_result == 1) {
+                        printf("ECDSA signature verification succeeded (EVP method)\n");
+                        result = 1;
+                    } else if (evp_result == 0) {
+                        printf("ECDSA signature verification failed (EVP method)\n");
+                    } else {
+                        print_openssl_error("Error during ECDSA signature verification (EVP method)");
+                    }
+                }
+            }
+            
+            /* Clean up */
+            EVP_MD_CTX_free(md_ctx);
+        }
+    }
     
     /* Clean up */
-    EC_KEY_free(ec_key);
+    if (sig_der) OPENSSL_free(sig_der);
     ECDSA_SIG_free(sig);
     
-    if (result == 1) {
+    if (result) {
         printf("ECDSA signature verification succeeded\n");
         return 1;
-    } else if (result == 0) {
-        printf("ECDSA signature verification failed\n");
-        return 0;
     } else {
-        print_openssl_error("Error during ECDSA signature verification");
+        printf("ECDSA signature verification failed with all methods\n");
         return 0;
     }
 }

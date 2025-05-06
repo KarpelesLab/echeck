@@ -227,19 +227,19 @@ int verify_attestation_key(const sgx_quote_t *quote, sgx_cert_verification_resul
         return 0;
     }
     
-    /* Compare the keys */
+    /* Compare the keys using the OpenSSL 3.0 APIs */
     /* For now, we just check that the keys are of the same type (both EC keys) */
-    int key_type_match = (EVP_PKEY_id(attest_key) == EVP_PKEY_id(cert_key));
+    /* In a real implementation, we would verify that the PCK certificate properly certifies
+       the attestation key by verifying a signature over the attestation key made by the PCK key */
+    int key_type_match = (EVP_PKEY_get_base_id(attest_key) == EVP_PKEY_get_base_id(cert_key));
     
     if (key_type_match) {
         /* The attestation key is the same type as the PCK certificate key */
-        /* In a complete implementation, we would verify a signature over the 
-           attestation key made by the PCK certificate key */
         result->attestation_key_verified = 1;
         printf("✅ Attestation key verified against PCK certificate\n");
     } else {
         fprintf(stderr, "❌ Attestation key type (%d) does not match PCK certificate key type (%d)\n",
-                EVP_PKEY_id(attest_key), EVP_PKEY_id(cert_key));
+                EVP_PKEY_get_base_id(attest_key), EVP_PKEY_get_base_id(cert_key));
     }
     
     /* Clean up */
