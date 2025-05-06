@@ -110,24 +110,6 @@ The tool extracts and displays the following fields from SGX quotes:
 - **ISV Product ID**: The Independent Software Vendor's product ID
 - **ISV SVN**: The Independent Software Vendor's Security Version Number
 
-### SGX Quote Structure
-
-The implementation follows Intel's SGX quote structure format, which is a fixed specification:
-
-```c
-typedef struct _sgx_quote {
-    sgx_quote_header_t header;   /* 0-47 */
-    sgx_report_body_t report_body; /* 48-431 */
-    uint32_t signature_len;      /* 432-435 */
-    uint8_t signature[];         /* 436+ (variable length) */
-} sgx_quote_t;
-```
-
-This allows the tool to correctly extract fields like MR_SIGNER with the value:
-```
-mrsigner=976aa9f931b8a16e01e01895d627e3ee96dce5478ebbbc77e120a25c79fe6016
-```
-
 ## Features
 
 1. Full ECDSA signature verification for SGX quotes
