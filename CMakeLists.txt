@@ -24,6 +24,7 @@ set(LIB_SOURCES
     src/lib/sgx_utils.c
     src/lib/sgx_cert_verify.c
     src/lib/ca.c
+    src/lib/echeck_quote.c
 )
 
 # Add openssl_runtime.c if OPENSSL_RUNTIME_LINK is enabled

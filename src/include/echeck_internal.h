@@ -10,6 +10,7 @@
 #define ECHECK_INTERNAL_H
 
 #include "echeck.h"
+#include "echeck_quote.h"
 
 /* OpenSSL headers */
 #ifdef OPENSSL_RUNTIME_LINK
