@@ -36,7 +36,10 @@ endif()
 add_library(libecheck STATIC ${LIB_SOURCES})
 # Set output name to "echeck" (without "lib" prefix that CMake would add)
 set_target_properties(libecheck PROPERTIES OUTPUT_NAME echeck)
+
+# Include directories
 target_include_directories(libecheck PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(libecheck PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/include)
 target_include_directories(libecheck PRIVATE ${OPENSSL_INCLUDE_DIRS})
 
 # Link with OpenSSL only if not using runtime linking
@@ -58,6 +61,7 @@ add_executable(echeck src/main/main.c)
 
 # Link against our static library
 target_include_directories(echeck PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(echeck PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/include)
 target_include_directories(echeck PRIVATE ${OPENSSL_INCLUDE_DIRS})
 
 # Link with OpenSSL only if not using runtime linking
@@ -85,10 +89,9 @@ install(TARGETS libecheck
         ARCHIVE DESTINATION lib
         LIBRARY DESTINATION lib)
 
-# Install headers
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/echeck
-        DESTINATION include
-        FILES_MATCHING PATTERN "*.h")
+# Install public header
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/echeck.h
+        DESTINATION include)
 
 # Generate and install pkg-config file
 configure_file(

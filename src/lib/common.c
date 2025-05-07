@@ -1,4 +1,8 @@
-#include "echeck/common.h"
+#include "echeck.h"
+#include "echeck_internal.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 /* Initialize global verbose flag */
 int global_verbose_flag = 0;
