@@ -6,20 +6,36 @@ X509 *load_certificate(const char *file_path) {
     BIO *bio = NULL;
     X509 *cert = NULL;
     
+    
     /* Create a BIO for reading the file */
+    if (BIO_new_file == NULL) {
+        fprintf(stderr, "ERROR: BIO_new_file function pointer is NULL!\n");
+        return NULL;
+    }
+    
     bio = BIO_new_file(file_path, "r");
     if (!bio) {
+        fprintf(stderr, "ERROR: Failed to create BIO for file: %s\n", file_path);
         print_openssl_error("Error opening certificate file");
         return NULL;
     }
     
+    
     /* Read PEM formatted certificate */
+    if (PEM_read_bio_X509 == NULL) {
+        fprintf(stderr, "ERROR: PEM_read_bio_X509 function pointer is NULL!\n");
+        BIO_free(bio);
+        return NULL;
+    }
+    
     cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
     if (!cert) {
+        fprintf(stderr, "ERROR: Failed to read X509 certificate from BIO\n");
         print_openssl_error("Error reading certificate");
         BIO_free(bio);
         return NULL;
     }
+    
     
     /* Free the BIO */
     BIO_free(bio);
@@ -34,14 +50,43 @@ int compute_pubkey_hash(X509 *cert, unsigned char *hash, unsigned int *hash_len)
     int der_len;
     int result = 0;
     
+    
+    if (!cert) {
+        fprintf(stderr, "ERROR: cert is NULL in compute_pubkey_hash\n");
+        return 0;
+    }
+    
+    if (!hash) {
+        fprintf(stderr, "ERROR: hash is NULL in compute_pubkey_hash\n");
+        return 0;
+    }
+    
+    if (!hash_len) {
+        fprintf(stderr, "ERROR: hash_len is NULL in compute_pubkey_hash\n");
+        return 0;
+    }
+    
+    
     /* Extract public key from certificate */
+    if (X509_get_pubkey == NULL) {
+        fprintf(stderr, "ERROR: X509_get_pubkey function pointer is NULL!\n");
+        return 0;
+    }
+    
     pubkey = X509_get_pubkey(cert);
     if (!pubkey) {
         print_openssl_error("Failed to extract public key from certificate");
         return 0;
     }
     
+    
     /* Export public key in PKIX format */
+    if (i2d_PUBKEY == NULL) {
+        fprintf(stderr, "ERROR: i2d_PUBKEY function pointer is NULL!\n");
+        EVP_PKEY_free(pubkey);
+        return 0;
+    }
+    
     der_len = i2d_PUBKEY(pubkey, &der_pubkey);
     if (der_len <= 0 || !der_pubkey) {
         print_openssl_error("Failed to export public key to DER format");
@@ -49,7 +94,15 @@ int compute_pubkey_hash(X509 *cert, unsigned char *hash, unsigned int *hash_len)
         return 0;
     }
     
+    
     /* Hash the public key with SHA-256 */
+    if (SHA256 == NULL) {
+        fprintf(stderr, "ERROR: SHA256 function pointer is NULL!\n");
+        OPENSSL_free(der_pubkey);
+        EVP_PKEY_free(pubkey);
+        return 0;
+    }
+    
     if (!SHA256(der_pubkey, der_len, hash)) {
         print_openssl_error("SHA-256 hash computation failed");
     } else {
@@ -58,7 +111,15 @@ int compute_pubkey_hash(X509 *cert, unsigned char *hash, unsigned int *hash_len)
     }
     
     /* Cleanup */
-    OPENSSL_free(der_pubkey);
+    if (CRYPTO_free == NULL) {
+        fprintf(stderr, "ERROR: CRYPTO_free function pointer is NULL!\n");
+        /* Fall back to regular free as a last resort */
+        free(der_pubkey);
+    } else {
+        /* Using our defined OPENSSL_free macro that expands to CRYPTO_free with __FILE__ and __LINE__ */
+        OPENSSL_free(der_pubkey);
+    }
+    
     EVP_PKEY_free(pubkey);
     
     return result;

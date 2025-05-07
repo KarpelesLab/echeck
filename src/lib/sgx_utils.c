@@ -1,13 +1,9 @@
 #include <stdio.h>
 #include <string.h>
-#include <openssl/evp.h>
-#include <openssl/sha.h>
-#include <openssl/ec.h>
-#include <openssl/ecdsa.h>
-#include <openssl/bn.h>
 
 #include "echeck/sgx_utils.h"
 #include "echeck/common.h"
+/* OpenSSL headers are accessed through openssl_runtime.h included in common.h */
 
 /* Compute a hash of the quote for verification 
  * This function only outputs when verbose mode is active */

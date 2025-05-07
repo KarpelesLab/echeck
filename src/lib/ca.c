@@ -1,13 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <openssl/bio.h>
-#include <openssl/pem.h>
-#include <openssl/x509.h>
-#include <openssl/err.h>
 
 #include "echeck/ca.h"
 #include "echeck/common.h"
+/* OpenSSL headers are accessed through openssl_runtime.h included in common.h */
 
 /* Intel SGX Root CA certificate in PEM format */
 static const char intel_sgx_root_ca[] = 
@@ -42,22 +39,44 @@ STACK_OF(X509) *get_trusted_ca_stack(void) {
     BIO *mem_bio = NULL;
     X509 *cert = NULL;
     
+    /* Load the trusted CA certificates */
+    
     /* Create a memory BIO for the certificate data */
+    if (BIO_new_mem_buf == NULL) {
+        fprintf(stderr, "ERROR: BIO_new_mem_buf function pointer is NULL!\n");
+        return NULL;
+    }
+    
     mem_bio = BIO_new_mem_buf(intel_sgx_root_ca, -1); /* -1 means use strlen */
     if (!mem_bio) {
         print_openssl_error("Error creating memory BIO for CA certificate");
         return NULL;
     }
     
+    
     /* Create a new certificate stack */
-    ca_stack = sk_X509_new_null();
+    if (OPENSSL_sk_new_null == NULL) {
+        fprintf(stderr, "ERROR: OPENSSL_sk_new_null function pointer is NULL!\n");
+        BIO_free(mem_bio);
+        return NULL;
+    }
+    
+    ca_stack = sk_X509_new_null();  /* Using our macro which redirects to OPENSSL_sk_new_null */
     if (!ca_stack) {
         print_openssl_error("Error creating certificate stack");
         BIO_free(mem_bio);
         return NULL;
     }
     
+    
     /* Read the PEM-formatted certificate */
+    if (PEM_read_bio_X509 == NULL) {
+        fprintf(stderr, "ERROR: PEM_read_bio_X509 function pointer is NULL!\n");
+        sk_X509_free(ca_stack);
+        BIO_free(mem_bio);
+        return NULL;
+    }
+    
     cert = PEM_read_bio_X509(mem_bio, NULL, NULL, NULL);
     if (!cert) {
         print_openssl_error("Error loading built-in CA certificate");
@@ -66,8 +85,17 @@ STACK_OF(X509) *get_trusted_ca_stack(void) {
         return NULL;
     }
     
+    
     /* Add the certificate to the stack */
-    if (!sk_X509_push(ca_stack, cert)) {
+    if (OPENSSL_sk_push == NULL) {
+        fprintf(stderr, "ERROR: OPENSSL_sk_push function pointer is NULL!\n");
+        X509_free(cert);
+        sk_X509_free(ca_stack);
+        BIO_free(mem_bio);
+        return NULL;
+    }
+    
+    if (!sk_X509_push(ca_stack, cert)) {  /* Using our macro which redirects to OPENSSL_sk_push */
         print_openssl_error("Error adding certificate to stack");
         X509_free(cert);
         sk_X509_free(ca_stack);
@@ -75,14 +103,20 @@ STACK_OF(X509) *get_trusted_ca_stack(void) {
         return NULL;
     }
     
+    
     /* Additional CA certificates could be added here */
     
     /* Free the BIO */
     BIO_free(mem_bio);
     
+    
     /* Return the certificate stack */
     if (global_verbose_flag) {
-        fprintf(stderr, "Loaded %d built-in CA certificates for SGX validation\n", sk_X509_num(ca_stack));
+        if (OPENSSL_sk_num == NULL) {
+            fprintf(stderr, "ERROR: OPENSSL_sk_num function pointer is NULL!\n");
+        } else {
+            fprintf(stderr, "Loaded %d built-in CA certificates for SGX validation\n", sk_X509_num(ca_stack));
+        }
     }
     return ca_stack;
 }

@@ -1,13 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <openssl/pem.h>
-#include <openssl/x509.h>
-#include <openssl/x509_vfy.h>
 
 #include "echeck/sgx_cert_verify.h"
 #include "echeck/common.h"
 #include "echeck/sgx_utils.h"
+/* OpenSSL headers are accessed through openssl_runtime.h included in common.h */
 
 /* Initialize the certificate verification result structure */
 void init_cert_verification_result(sgx_cert_verification_result_t *result) {
@@ -94,11 +92,27 @@ int extract_pck_cert_chain(const sgx_quote_t *quote, sgx_cert_verification_resul
     }
     
     /* Check for errors */
+    if (ERR_peek_last_error == NULL) {
+        fprintf(stderr, "ERROR: ERR_peek_last_error function pointer is NULL!\n");
+        BIO_free(bio);
+        return 0;
+    }
+    
     unsigned long err = ERR_peek_last_error();
-    if (ERR_GET_LIB(err) == ERR_LIB_PEM && ERR_GET_REASON(err) == PEM_R_NO_START_LINE) {
+    
+    /* Don't print the error code at standard verbosity level */
+    /* We don't need to print the error code */
+    
+    /* Extract library and reason using the proper OpenSSL macros */
+    if (err == 0) {
+        /* No error */
+    } else if (ERR_GET_LIB(err) == ERR_LIB_PEM && 
+               ERR_GET_REASON(err) == PEM_R_NO_START_LINE) {
         /* This is expected when we reach the end of the data */
-        ERR_clear_error();
-    } else if (err != 0) {
+        if (ERR_clear_error != NULL) {
+            ERR_clear_error();
+        }
+    } else {
         /* Some other error occurred */
         print_openssl_error("Error reading certificates");
         BIO_free(bio);
@@ -124,8 +138,18 @@ int verify_pck_cert_chain(sgx_cert_verification_result_t *result, STACK_OF(X509)
         return 0;
     }
     
-    if (!trusted_ca || sk_X509_num(trusted_ca) == 0) {
+    if (!trusted_ca) {
         fprintf(stderr, "No trusted CA certificates provided\n");
+        return 0;
+    }
+    
+    if (OPENSSL_sk_num == NULL) {
+        fprintf(stderr, "ERROR: OPENSSL_sk_num function pointer is NULL!\n");
+        return 0;
+    }
+    
+    if (sk_X509_num(trusted_ca) == 0) {
+        fprintf(stderr, "Trusted CA certificate stack is empty\n");
         return 0;
     }
     
@@ -145,15 +169,40 @@ int verify_pck_cert_chain(sgx_cert_verification_result_t *result, STACK_OF(X509)
     }
     
     /* Add the trusted CA certificates to the store */
+    if (OPENSSL_sk_num == NULL || OPENSSL_sk_value == NULL) {
+        fprintf(stderr, "ERROR: OPENSSL_sk_num or OPENSSL_sk_value function pointer is NULL!\n");
+        X509_STORE_free(store);
+        X509_STORE_CTX_free(ctx);
+        return 0;
+    }
+    
     for (int i = 0; i < sk_X509_num(trusted_ca); i++) {
         X509 *ca_cert = sk_X509_value(trusted_ca, i);
+        if (!ca_cert) {
+            fprintf(stderr, "ERROR: Failed to get certificate at index %d\n", i);
+            continue;
+        }
+        
         if (X509_STORE_add_cert(store, ca_cert) != 1) {
             /* Check if the error is just that the certificate already exists */
+            if (ERR_peek_last_error == NULL) {
+                fprintf(stderr, "ERROR: ERR_peek_last_error function pointer is NULL!\n");
+                X509_STORE_free(store);
+                X509_STORE_CTX_free(ctx);
+                return 0;
+            }
+            
             unsigned long err = ERR_peek_last_error();
+            
+            /* We don't need to print the error code */
+            
+            /* Use the standard OpenSSL macros to get the library and reason codes */
             if (ERR_GET_LIB(err) == ERR_LIB_X509 && 
                 ERR_GET_REASON(err) == X509_R_CERT_ALREADY_IN_HASH_TABLE) {
                 /* This is fine, just clear the error */
-                ERR_clear_error();
+                if (ERR_clear_error != NULL) {
+                    ERR_clear_error();
+                }
             } else {
                 print_openssl_error("Failed to add CA certificate to store");
                 X509_STORE_free(store);
@@ -164,6 +213,13 @@ int verify_pck_cert_chain(sgx_cert_verification_result_t *result, STACK_OF(X509)
     }
     
     /* Create a STACK for the untrusted certificates (those extracted from the quote) */
+    if (OPENSSL_sk_new_null == NULL) {
+        fprintf(stderr, "ERROR: OPENSSL_sk_new_null function pointer is NULL!\n");
+        X509_STORE_free(store);
+        X509_STORE_CTX_free(ctx);
+        return 0;
+    }
+    
     STACK_OF(X509) *untrusted = sk_X509_new_null();
     if (!untrusted) {
         print_openssl_error("Failed to create certificate stack");
@@ -174,6 +230,14 @@ int verify_pck_cert_chain(sgx_cert_verification_result_t *result, STACK_OF(X509)
     
     /* Add the intermediate certificate (if available) to the untrusted stack */
     if (result->intermediate_cert) {
+        if (OPENSSL_sk_push == NULL) {
+            fprintf(stderr, "ERROR: OPENSSL_sk_push function pointer is NULL!\n");
+            sk_X509_free(untrusted);
+            X509_STORE_free(store);
+            X509_STORE_CTX_free(ctx);
+            return 0;
+        }
+        
         if (sk_X509_push(untrusted, result->intermediate_cert) != 1) {
             print_openssl_error("Failed to add intermediate certificate to stack");
             sk_X509_free(untrusted);
@@ -184,28 +248,74 @@ int verify_pck_cert_chain(sgx_cert_verification_result_t *result, STACK_OF(X509)
     }
     
     /* Initialize the verification context */
-    if (X509_STORE_CTX_init(ctx, store, result->pck_cert, untrusted) != 1) {
+    /* Initialize the verification context */
+    
+    if (X509_STORE_CTX_init == NULL) {
+        fprintf(stderr, "ERROR: X509_STORE_CTX_init function pointer is NULL!\n");
+        if (OPENSSL_sk_free == NULL) {
+            fprintf(stderr, "ERROR: OPENSSL_sk_free function pointer is NULL!\n");
+        } else {
+            sk_X509_free(untrusted);
+        }
+        X509_STORE_free(store);
+        X509_STORE_CTX_free(ctx);
+        return 0;
+    }
+    
+    int init_result = X509_STORE_CTX_init(ctx, store, result->pck_cert, untrusted);
+    
+    if (init_result != 1) {
         print_openssl_error("Failed to initialize X509_STORE_CTX");
-        sk_X509_free(untrusted);
+        if (OPENSSL_sk_free == NULL) {
+            fprintf(stderr, "ERROR: OPENSSL_sk_free function pointer is NULL!\n");
+        } else {
+            sk_X509_free(untrusted);
+        }
         X509_STORE_free(store);
         X509_STORE_CTX_free(ctx);
         return 0;
     }
     
     /* Perform the verification */
+    /* Perform the verification */
+    
+    if (X509_verify_cert == NULL) {
+        fprintf(stderr, "ERROR: X509_verify_cert function pointer is NULL!\n");
+        if (OPENSSL_sk_free == NULL) {
+            fprintf(stderr, "ERROR: OPENSSL_sk_free function pointer is NULL!\n");
+        } else {
+            sk_X509_free(untrusted);
+        }
+        X509_STORE_free(store);
+        X509_STORE_CTX_free(ctx);
+        return 0;
+    }
+    
     int verify_result = X509_verify_cert(ctx);
+    
     if (verify_result == 1) {
         result->chain_verified = 1;
     } else {
-        int error = X509_STORE_CTX_get_error(ctx);
-        fprintf(stderr, "Error: PCK certificate chain verification failed: %s\n", 
-                X509_verify_cert_error_string(error));
+        if (X509_STORE_CTX_get_error == NULL || X509_verify_cert_error_string == NULL) {
+            fprintf(stderr, "ERROR: X509_STORE_CTX_get_error or X509_verify_cert_error_string function pointer is NULL!\n");
+            fprintf(stderr, "Error: PCK certificate chain verification failed\n");
+        } else {
+            int error = X509_STORE_CTX_get_error(ctx);
+            fprintf(stderr, "Error: PCK certificate chain verification failed: %s\n", 
+                    X509_verify_cert_error_string(error));
+        }
     }
     
     /* Clean up */
     X509_STORE_CTX_free(ctx);
     X509_STORE_free(store);
-    sk_X509_free(untrusted);
+    
+    if (OPENSSL_sk_free == NULL) {
+        fprintf(stderr, "ERROR: OPENSSL_sk_free function pointer is NULL!\n");
+        /* No cleanup possible if OPENSSL_sk_free is missing */
+    } else {
+        sk_X509_free(untrusted);
+    }
     
     return result->chain_verified;
 }

@@ -3,11 +3,11 @@
 #include <string.h>
 #include <unistd.h>
 #include <getopt.h>
-#include <openssl/sha.h>
 
 #include "echeck/sgx_types.h"
 #include "echeck/common.h"
 #include "echeck/cert_utils.h"
+/* OpenSSL headers are accessed through openssl_runtime.h included in common.h */
 #include "echeck/sgx_quote_parser.h"
 #include "echeck/sgx_quote_verify.h"
 #include "echeck/ca.h"
@@ -110,9 +110,11 @@ int main(int argc, char *argv[]) {
     /* Set global verbose flag based on command-line options */
     global_verbose_flag = opts.verbose;
     
-    /* Initialize OpenSSL */
-    OpenSSL_add_all_algorithms();
-    ERR_load_crypto_strings();
+    /* Initialize OpenSSL (using runtime linking if enabled) */
+    if (!initialize_openssl()) {
+        fprintf(stderr, "Error: Failed to initialize OpenSSL\n");
+        return 1;
+    }
     
     /* Load certificate */
     X509 *cert = load_certificate(opts.cert_file);
@@ -127,8 +129,6 @@ int main(int argc, char *argv[]) {
     if (!extract_sgx_quote(cert, &quote_buffer)) {
         fprintf(stderr, "Error: No SGX Quote extension found in certificate\n");
         X509_free(cert);
-        EVP_cleanup();
-        ERR_free_strings();
         return 1;
     }
 
@@ -146,8 +146,6 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Error: Failed to compute public key hash\n");
         free(quote_buffer.data);
         X509_free(cert);
-        EVP_cleanup();
-        ERR_free_strings();
         return 1;
     }
     
@@ -160,8 +158,6 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "The enclave that created this quote did not know this certificate's public key\n");
         free(quote_buffer.data);
         X509_free(cert);
-        EVP_cleanup();
-        ERR_free_strings();
         return 1;
     }
     
@@ -180,8 +176,6 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Error: Invalid MRENCLAVE format (expected 64 hex characters)\n");
             free(quote_buffer.data);
             X509_free(cert);
-            EVP_cleanup();
-            ERR_free_strings();
             return 1;
         }
         
@@ -189,8 +183,6 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Error: MRENCLAVE value does not match expected value\n");
             free(quote_buffer.data);
             X509_free(cert);
-            EVP_cleanup();
-            ERR_free_strings();
             return 1;
         }
         
@@ -206,8 +198,6 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Error: Invalid MRSIGNER format (expected 64 hex characters)\n");
             free(quote_buffer.data);
             X509_free(cert);
-            EVP_cleanup();
-            ERR_free_strings();
             return 1;
         }
         
@@ -215,8 +205,6 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Error: MRSIGNER value does not match expected value\n");
             free(quote_buffer.data);
             X509_free(cert);
-            EVP_cleanup();
-            ERR_free_strings();
             return 1;
         }
         
@@ -232,8 +220,6 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Error: SGX quote verification failed\n");
         free(quote_buffer.data);
         X509_free(cert);
-        EVP_cleanup();
-        ERR_free_strings();
         return 1;
     }
     
@@ -307,8 +293,15 @@ int main(int argc, char *argv[]) {
     /* Cleanup */
     free(quote_buffer.data);
     X509_free(cert);
-    EVP_cleanup();
-    ERR_free_strings();
+    
+    /* 
+     * Modern OpenSSL (3.0+) doesn't need explicit cleanup calls. 
+     * The following deprecated functions are no longer needed:
+     * - EVP_cleanup()
+     * - ERR_free_strings()
+     *
+     * OpenSSL 3.0+ handles cleanup automatically.
+     */
     
     return 0;
 }

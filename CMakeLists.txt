@@ -8,6 +8,9 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # Compiler options
 add_compile_options(-Wall -pipe -O2 -g -ggdb)
 
+# Option to use runtime loading of OpenSSL
+option(OPENSSL_RUNTIME_LINK "Load OpenSSL functions at runtime using dlopen instead of linking at build time" OFF)
+
 # Find OpenSSL
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(OPENSSL REQUIRED libssl libcrypto)
@@ -23,13 +26,25 @@ set(LIB_SOURCES
     src/lib/ca.c
 )
 
+# Add openssl_runtime.c if OPENSSL_RUNTIME_LINK is enabled
+if(OPENSSL_RUNTIME_LINK)
+    list(APPEND LIB_SOURCES src/lib/openssl_runtime.c)
+    add_compile_definitions(OPENSSL_RUNTIME_LINK)
+endif()
+
 # Create static library
 add_library(libecheck STATIC ${LIB_SOURCES})
 # Set output name to "echeck" (without "lib" prefix that CMake would add)
 set_target_properties(libecheck PROPERTIES OUTPUT_NAME echeck)
 target_include_directories(libecheck PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(libecheck PRIVATE ${OPENSSL_INCLUDE_DIRS})
-target_link_libraries(libecheck PRIVATE ${OPENSSL_LIBRARIES})
+
+# Link with OpenSSL only if not using runtime linking
+if(NOT OPENSSL_RUNTIME_LINK)
+    target_link_libraries(libecheck PRIVATE ${OPENSSL_LIBRARIES})
+else()
+    target_link_libraries(libecheck PRIVATE dl)  # Link with libdl for dlopen/dlsym
+endif()
 
 # Add executable target
 add_executable(echeck src/main/main.c)
@@ -37,7 +52,13 @@ add_executable(echeck src/main/main.c)
 # Link against our static library
 target_include_directories(echeck PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(echeck PRIVATE ${OPENSSL_INCLUDE_DIRS})
-target_link_libraries(echeck PRIVATE libecheck ${OPENSSL_LIBRARIES})
+
+# Link with OpenSSL only if not using runtime linking
+if(NOT OPENSSL_RUNTIME_LINK)
+    target_link_libraries(echeck PRIVATE libecheck ${OPENSSL_LIBRARIES})
+else()
+    target_link_libraries(echeck PRIVATE libecheck)
+endif()
 
 # Set library version
 set(ECHECK_VERSION_MAJOR 1)

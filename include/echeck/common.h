@@ -5,10 +5,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <openssl/err.h>
+
+/* Include OpenSSL runtime linking support if enabled */
+#include "echeck/openssl_runtime.h"
 
 /* Global flags for controlling output */
 extern int global_verbose_flag;
+
+/* OpenSSL initialization */
+int initialize_openssl(void);
 
 /* Error handling utility */
 void print_openssl_error(const char *msg);

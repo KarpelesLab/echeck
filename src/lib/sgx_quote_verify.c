@@ -5,8 +5,7 @@
 #include "echeck/ca.h"
 #include "echeck/sgx_utils.h"
 #include "echeck/sgx_cert_verify.h"
-#include <openssl/sha.h>
-#include <openssl/ecdsa.h>
+/* OpenSSL headers are accessed through openssl_runtime.h */
 
 /* Initialize verification result structure */
 static void init_verification_result(sgx_verification_result_t *result) {
@@ -40,17 +39,21 @@ int verify_sgx_quote(const unsigned char *quote_data, int quote_len,
     STACK_OF(X509) *ca_stack = NULL;
     int ret_val = 0;
     
+    
     /* Initialize result structure */
     init_verification_result(result);
+    
     
     /* Basic validation of the quote data */
     /* Calculate minimum size: 48 bytes (header) + 384 bytes (report body) + 4 bytes (signature_len) */
     size_t min_quote_size = 48 + sizeof(sgx_report_body_t) + sizeof(uint32_t);
+    
     if (quote_len < min_quote_size) {
         fprintf(stderr, "SGX quote data too short (%d bytes), minimum required: %zu\n", 
                 quote_len, min_quote_size);
         return 0;
     }
+    
     
     /* Use built-in CA stack */
     ca_stack = get_trusted_ca_stack();
@@ -58,6 +61,7 @@ int verify_sgx_quote(const unsigned char *quote_data, int quote_len,
         fprintf(stderr, "Failed to load built-in CA certificates\n");
         return 0;
     }
+    
     
     /* Use the SGX quote structure for proper field access */
     const sgx_quote_t *quote = (const sgx_quote_t *)quote_data;
@@ -74,7 +78,15 @@ int verify_sgx_quote(const unsigned char *quote_data, int quote_len,
     if (signature_len > 0 && quote_len < min_quote_size + signature_len) {
         fprintf(stderr, "Quote data size (%d) smaller than expected (%zu)\n", 
                 quote_len, min_quote_size + signature_len);
-        if (ca_stack) sk_X509_pop_free(ca_stack, X509_free);
+        if (ca_stack) {
+            if (OPENSSL_sk_pop_free == NULL) {
+                fprintf(stderr, "ERROR: OPENSSL_sk_pop_free function pointer is NULL!\n");
+                /* Fall back to regular free in case of error */
+                sk_X509_free(ca_stack);
+            } else {
+                sk_X509_pop_free(ca_stack, X509_free);
+            }
+        }
         return 0;
     }
     
@@ -216,7 +228,15 @@ int verify_sgx_quote(const unsigned char *quote_data, int quote_len,
     
     /* Cleanup */
     free_cert_verification_result(&result->cert_result);
-    if (ca_stack) sk_X509_pop_free(ca_stack, X509_free);
+    if (ca_stack) {
+        if (OPENSSL_sk_pop_free == NULL) {
+            fprintf(stderr, "ERROR: OPENSSL_sk_pop_free function pointer is NULL!\n");
+            /* Fall back to regular free in case of error */
+            sk_X509_free(ca_stack);
+        } else {
+            sk_X509_pop_free(ca_stack, X509_free);
+        }
+    }
     
     return ret_val;
 }
@@ -275,19 +295,40 @@ int verify_quote_signature(const sgx_quote_t *quote, const unsigned char *quote_
 /* Verify report data matches certificate */
 int verify_report_data(const sgx_quote_t *quote, const unsigned char *pubkey_hash, 
                       unsigned int pubkey_hash_len) {
-    if (!quote || !pubkey_hash || pubkey_hash_len != SHA256_DIGEST_LENGTH) {
+    
+    if (!quote) {
+        fprintf(stderr, "ERROR: quote is NULL in verify_report_data\n");
         return 0;
     }
+    
+    if (!pubkey_hash) {
+        fprintf(stderr, "ERROR: pubkey_hash is NULL in verify_report_data\n");
+        return 0;
+    }
+    
+    if (pubkey_hash_len != SHA256_DIGEST_LENGTH) {
+        fprintf(stderr, "ERROR: Invalid pubkey_hash_len (%u) in verify_report_data, expected %d\n", 
+                pubkey_hash_len, SHA256_DIGEST_LENGTH);
+        return 0;
+    }
+    
     
     /* Compare the first SHA256_DIGEST_LENGTH bytes of report_data with pubkey_hash */
     int report_data_valid = 1;
     
+    /* Compare the report_data against the pubkey_hash */
+    
     /* Verify first 32 bytes (SHA-256 hash) */
     for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
         if (quote->report_body.report_data[i] != pubkey_hash[i]) {
+            /* Mismatch found */
             report_data_valid = 0;
             break;
         }
+    }
+    
+    if (report_data_valid) {
+        /* First 32 bytes match */
     }
     
     /* Verify remaining bytes are zeros (padding) */
