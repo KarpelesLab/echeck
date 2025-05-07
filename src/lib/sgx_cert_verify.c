@@ -2,9 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "echeck/sgx_cert_verify.h"
-#include "echeck/common.h"
-#include "echeck/sgx_utils.h"
+#include "echeck.h"
+#include "echeck_internal.h"
 /* OpenSSL headers are accessed through openssl_runtime.h included in common.h */
 
 /* Initialize the certificate verification result structure */

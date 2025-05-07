@@ -1,10 +1,5 @@
-#include "echeck/sgx_quote_verify.h"
-#include "echeck/common.h"
-#include "echeck/cert_utils.h"
-#include "echeck/sgx_quote_parser.h"
-#include "echeck/ca.h"
-#include "echeck/sgx_utils.h"
-#include "echeck/sgx_cert_verify.h"
+#include "echeck.h"
+#include "echeck_internal.h"
 /* OpenSSL headers are accessed through openssl_runtime.h */
 
 /* Initialize verification result structure */

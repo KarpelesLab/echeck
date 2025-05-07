@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 /* Include OpenSSL runtime linking support if enabled */
-#include "echeck/openssl_runtime.h"
+#include "openssl_runtime.h"
 
 /* Global flags for controlling output */
 extern int global_verbose_flag;

@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "echeck/sgx_utils.h"
-#include "echeck/common.h"
+#include "echeck.h"
+#include "echeck_internal.h"
 /* OpenSSL headers are accessed through openssl_runtime.h included in common.h */
 
 /* Compute a hash of the quote for verification 

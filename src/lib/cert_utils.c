@@ -1,8 +1,9 @@
-#include "echeck/cert_utils.h"
-#include "echeck/common.h"
+#include "echeck.h"
+#include "echeck_internal.h"
+#include <stdlib.h>
 
 /* Load a certificate from a PEM file */
-X509 *load_certificate(const char *file_path) {
+void *load_certificate(const char *file_path) {
     BIO *bio = NULL;
     X509 *cert = NULL;
     
@@ -44,7 +45,8 @@ X509 *load_certificate(const char *file_path) {
 }
 
 /* Extract a public key hash from a certificate */
-int compute_pubkey_hash(X509 *cert, unsigned char *hash, unsigned int *hash_len) {
+int compute_pubkey_hash(void *cert_ptr, unsigned char *hash, unsigned int *hash_len) {
+    X509 *cert = (X509 *)cert_ptr;
     EVP_PKEY *pubkey = NULL;
     unsigned char *der_pubkey = NULL;
     int der_len;

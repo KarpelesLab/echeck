@@ -10,7 +10,7 @@
 #include <dlfcn.h>
 #endif
 
-#include "echeck/openssl_runtime.h"
+#include "openssl_runtime.h"
 
 /* Define all OpenSSL function pointers */
 BIO* (*BIO_new_file)(const char *filename, const char *mode) = NULL;

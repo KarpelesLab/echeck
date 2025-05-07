@@ -1,7 +1,7 @@
 #ifndef CA_H
 #define CA_H
 
-#include "echeck/openssl_runtime.h"
+#include "openssl_runtime.h"
 
 /**
  * Get a stack of trusted CA certificates for SGX validation.

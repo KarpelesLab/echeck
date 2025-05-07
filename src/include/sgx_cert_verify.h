@@ -1,8 +1,8 @@
 #ifndef SGX_CERT_VERIFY_H
 #define SGX_CERT_VERIFY_H
 
-#include "sgx_types.h"
-#include "echeck/openssl_runtime.h"
+/* SGX types included via echeck.h */
+#include "openssl_runtime.h"
 
 /* Certificate verification result structure */
 typedef struct {

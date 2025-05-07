@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "echeck/ca.h"
-#include "echeck/common.h"
+#include "echeck.h"
+#include "echeck_internal.h"
 /* OpenSSL headers are accessed through openssl_runtime.h included in common.h */
 
 /* Intel SGX Root CA certificate in PEM format */

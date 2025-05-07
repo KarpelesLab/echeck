@@ -31,17 +31,33 @@ typedef struct {
     int length;           /**< Length of quote data */
 } sgx_quote_buffer_t;
 
+/* SGX certificate extension OID */
+#define SGX_QUOTE_OID "1.3.6.1.4.1.311.105.1"
+
+/**
+ * @brief Custom header structure for SGX quotes
+ */
+#pragma pack(push, 1)
+typedef struct {
+    uint32_t version;              /**< Version of the header structure */
+    uint32_t type;                 /**< Type of quote or data that follows */
+    uint32_t size;                 /**< Size of the data after this header */
+    uint32_t reserved;             /**< Reserved field */
+} sgx_quote_header_t;
+#pragma pack(pop)
+
 /**
  * @brief SGX Quote structure
  */
+#pragma pack(push, 1)
 typedef struct {
     uint16_t version;              /**< Quote version */
     uint16_t sign_type;            /**< Signature type */
-    uint8_t reserved[4];           /**< Reserved bytes */
+    uint8_t epid_group_id[4];      /**< EPID Group ID */
     uint16_t qe_svn;               /**< Quoting Enclave SVN */
     uint16_t pce_svn;              /**< Provisioning Certification Enclave SVN */
-    uint8_t uuid[16];              /**< UUID of the QE vendor */
-    uint8_t user_data[20];         /**< Custom user-defined data */
+    uint32_t xeid;                 /**< Extended EPID Group ID */
+    uint8_t basename[32];          /**< Basename */
     
     /**
      * @brief SGX Report Body
@@ -49,21 +65,26 @@ typedef struct {
     struct {
         uint8_t cpu_svn[16];       /**< CPU SVN */
         uint32_t misc_select;      /**< MISCSELECT */
-        uint8_t reserved1[28];     /**< Reserved bytes */
+        uint8_t reserved1[12];     /**< Reserved bytes */
+        uint8_t isv_ext_prod_id[16]; /**< ISV Extended Product ID */
         uint8_t attributes[16];    /**< Attributes */
         uint8_t mr_enclave[32];    /**< Measurement of the enclave (code+data) */
         uint8_t reserved2[32];     /**< Reserved bytes */
         uint8_t mr_signer[32];     /**< Measurement of the signing key */
-        uint8_t reserved3[96];     /**< Reserved bytes */
+        uint8_t reserved3[32];     /**< Reserved bytes */
+        uint8_t config_id[64];     /**< Configuration ID */
         uint16_t isv_prod_id;      /**< ISV Product ID */
         uint16_t isv_svn;          /**< ISV SVN */
-        uint8_t reserved4[60];     /**< Reserved bytes */
+        uint16_t config_svn;       /**< Configuration SVN */
+        uint8_t reserved4[42];     /**< Reserved bytes */
+        uint8_t isv_family_id[16]; /**< ISV Family ID */
         uint8_t report_data[64];   /**< Custom report data */
     } report_body;
     
     uint32_t signature_len;        /**< Length of the signature data */
     /* Followed by variable-length signature data */
 } sgx_quote_t;
+#pragma pack(pop)
 
 /**
  * @brief Verification result structure

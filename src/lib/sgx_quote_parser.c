@@ -1,10 +1,13 @@
-#include "echeck/sgx_quote_parser.h"
-#include "echeck/common.h"
+#include "echeck.h"
+#include "echeck_internal.h"
+#include <stdlib.h>
+#include <string.h>
 
 /* All OpenSSL functions are accessed through openssl_runtime.h now */
 
 /* Extract SGX quote extension from a certificate */
-int extract_sgx_quote(X509 *cert, sgx_quote_buffer_t *quote_buffer) {
+int extract_sgx_quote(void *cert_ptr, sgx_quote_buffer_t *quote_buffer) {
+    X509 *cert = (X509 *)cert_ptr;
     int i, nid, ext_count;
     X509_EXTENSION *ext = NULL;
     ASN1_OCTET_STRING *ext_data = NULL;

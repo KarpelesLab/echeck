@@ -1,7 +1,7 @@
 #ifndef CERT_UTILS_H
 #define CERT_UTILS_H
 
-#include "echeck/openssl_runtime.h"
+#include "openssl_runtime.h"
 
 /* Load a certificate from a PEM file */
 X509 *load_certificate(const char *file_path);

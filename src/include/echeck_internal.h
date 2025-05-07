@@ -13,7 +13,7 @@
 
 /* OpenSSL headers */
 #ifdef OPENSSL_RUNTIME_LINK
-#include "echeck/openssl_runtime.h"
+#include "openssl_runtime.h"
 #else
 #include <openssl/bio.h>
 #include <openssl/pem.h>
@@ -48,5 +48,12 @@ int verify_certificate_chain(X509 *leaf_cert, STACK_OF(X509) *chain,
 /* Internal functions from sgx_utils.c */
 void dump_buffer(const char *name, const unsigned char *data, size_t len);
 int print_x509_name(X509_NAME *name);
+
+/* Error handling utility (from common.c) */
+void print_openssl_error(const char *msg);
+
+/* Utility functions from common.c */
+uint32_t extract_uint32(const uint8_t *data);
+uint16_t extract_uint16(const uint8_t *data);
 
 #endif /* ECHECK_INTERNAL_H */

@@ -1,8 +1,8 @@
 #ifndef SGX_QUOTE_PARSER_H
 #define SGX_QUOTE_PARSER_H
 
-#include "echeck/openssl_runtime.h"
-#include "sgx_types.h"
+#include "openssl_runtime.h"
+/* SGX types included via echeck.h */
 
 /* Result structure for quote extraction */
 typedef struct {
