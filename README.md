@@ -123,10 +123,27 @@ cmake -DOPENSSL_RUNTIME_LINK=ON ..
 make
 ```
 
+With runtime linking, the project will search for OpenSSL libraries in this order:
+
+**On macOS:**
+- `libssl.3.dylib`, `libcrypto.3.dylib` (versioned libraries)
+- `libssl.dylib`, `libcrypto.dylib` (unversioned fallbacks)
+
+**On Windows:**
+- For 64-bit AMD64: `libssl-3-x64.dll`, `libcrypto-3-x64.dll`
+- For 64-bit ARM64: `libssl-3-arm64.dll`, `libcrypto-3-arm64.dll`
+- For 32-bit x86: `libssl-3.dll`, `libcrypto-3.dll`
+- Fallbacks: `libssl-3.dll`, `libcrypto-3.dll` and then `libssl.dll`, `libcrypto.dll`
+
+**On Linux/Unix:**
+- `libssl.so.3`, `libcrypto.so.3`
+- `libssl.so`, `libcrypto.so` (fallbacks)
+
 This option is useful in environments where:
 - You want to deploy the binary without OpenSSL dependencies
 - You need to use a specific OpenSSL version at runtime
 - The system may have multiple OpenSSL versions installed
+- You need to support multiple platforms with a single binary
 
 The executable will be located at `build/echeck` and the static library at `build/libecheck.a`.
 
