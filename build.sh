@@ -27,3 +27,4 @@ fi
 echo "Build complete!"
 echo "The echeck binary is in the build directory: ./build/echeck"
 echo "The static library is in the build directory: ./build/libecheck.a"
+echo "The shared library is in the build directory: ./build/libecheck.so"

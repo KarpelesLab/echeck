@@ -32,18 +32,47 @@ if(OPENSSL_RUNTIME_LINK)
     add_compile_definitions(OPENSSL_RUNTIME_LINK)
 endif()
 
-# Create static library
-add_library(libecheck STATIC ${LIB_SOURCES})
-# Set output name to "echeck" (without "lib" prefix that CMake would add)
-set_target_properties(libecheck PROPERTIES OUTPUT_NAME echeck)
+# Set library version
+set(ECHECK_VERSION_MAJOR 1)
+set(ECHECK_VERSION_MINOR 0)
+set(ECHECK_VERSION_PATCH 0)
+set(ECHECK_VERSION "${ECHECK_VERSION_MAJOR}.${ECHECK_VERSION_MINOR}.${ECHECK_VERSION_PATCH}")
+set(ECHECK_SOVERSION ${ECHECK_VERSION_MAJOR})
 
-# Include directories
+# Add symbol visibility flags for shared library
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fvisibility=hidden")
+endif()
+
+# Create static library
+add_library(libecheck_static STATIC ${LIB_SOURCES})
+# Set output name to "echeck" (without "lib" prefix that CMake would add)
+set_target_properties(libecheck_static PROPERTIES OUTPUT_NAME echeck)
+
+# Create shared library
+add_library(libecheck SHARED ${LIB_SOURCES})
+# Set output name and version properties
+set_target_properties(libecheck PROPERTIES 
+    OUTPUT_NAME echeck
+    VERSION ${ECHECK_VERSION}
+    SOVERSION ${ECHECK_SOVERSION})
+
+# Define ECHECK_SHARED_LIBRARY when building shared library
+target_compile_definitions(libecheck PRIVATE ECHECK_SHARED_LIBRARY)
+
+# Include directories for static library
+target_include_directories(libecheck_static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(libecheck_static PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/include)
+target_include_directories(libecheck_static PRIVATE ${OPENSSL_INCLUDE_DIRS})
+
+# Include directories for shared library
 target_include_directories(libecheck PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(libecheck PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/include)
 target_include_directories(libecheck PRIVATE ${OPENSSL_INCLUDE_DIRS})
 
 # Link with OpenSSL only if not using runtime linking
 if(NOT OPENSSL_RUNTIME_LINK)
+    target_link_libraries(libecheck_static PRIVATE ${OPENSSL_LIBRARIES})
     target_link_libraries(libecheck PRIVATE ${OPENSSL_LIBRARIES})
 else()
     # For runtime linking, link with appropriate dynamic loading library
@@ -52,6 +81,7 @@ else()
         # which is linked by default on Windows
     else()
         # Unix systems need libdl for dlopen/dlsym
+        target_link_libraries(libecheck_static PRIVATE dl)
         target_link_libraries(libecheck PRIVATE dl)
     endif()
 endif()
@@ -66,28 +96,19 @@ target_include_directories(echeck PRIVATE ${OPENSSL_INCLUDE_DIRS})
 
 # Link with OpenSSL only if not using runtime linking
 if(NOT OPENSSL_RUNTIME_LINK)
-    target_link_libraries(echeck PRIVATE libecheck ${OPENSSL_LIBRARIES})
+    target_link_libraries(echeck PRIVATE libecheck_static ${OPENSSL_LIBRARIES})
 else()
-    target_link_libraries(echeck PRIVATE libecheck)
+    target_link_libraries(echeck PRIVATE libecheck_static)
 endif()
 
-# Set library version
-set(ECHECK_VERSION_MAJOR 1)
-set(ECHECK_VERSION_MINOR 0)
-set(ECHECK_VERSION_PATCH 0)
-set(ECHECK_VERSION "${ECHECK_VERSION_MAJOR}.${ECHECK_VERSION_MINOR}.${ECHECK_VERSION_PATCH}")
-
-# Set library properties
-set_target_properties(libecheck PROPERTIES
-    VERSION ${ECHECK_VERSION}
-    SOVERSION ${ECHECK_VERSION_MAJOR}
-)
+# Not needed as library version is already set above
 
 # Install targets
 install(TARGETS echeck DESTINATION bin)
-install(TARGETS libecheck
+install(TARGETS libecheck_static libecheck
         ARCHIVE DESTINATION lib
-        LIBRARY DESTINATION lib)
+        LIBRARY DESTINATION lib
+        RUNTIME DESTINATION bin)
 
 # Install public header
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/echeck.h

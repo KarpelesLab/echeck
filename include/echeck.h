@@ -16,12 +16,30 @@ extern "C" {
 #include <stddef.h>
 #include <stdint.h>
 
+/* Define visibility macros for shared library symbols */
+#if defined(_WIN32) || defined(__CYGWIN__)
+  #ifdef ECHECK_SHARED_LIBRARY
+    #define ECHECK_API __declspec(dllexport)
+  #else
+    #define ECHECK_API __declspec(dllimport)
+  #endif
+  #define ECHECK_PRIVATE
+#else
+  #if defined(__GNUC__) && __GNUC__ >= 4
+    #define ECHECK_API __attribute__ ((visibility ("default")))
+    #define ECHECK_PRIVATE __attribute__ ((visibility ("hidden")))
+  #else
+    #define ECHECK_API
+    #define ECHECK_PRIVATE
+  #endif
+#endif
+
 /**
  * @brief Initialize the library and OpenSSL
  * 
  * @return 1 on success, 0 on failure
  */
-int initialize_openssl(void);
+ECHECK_API int initialize_openssl(void);
 
 /**
  * @brief SGX Quote buffer structure
@@ -33,6 +51,10 @@ typedef struct {
 
 /* SGX certificate extension OID */
 #define SGX_QUOTE_OID "1.3.6.1.4.1.311.105.1"
+
+/* SGX types for public API */
+#define SGX_REPORT_DATA_SIZE 64
+#define SGX_MEASUREMENT_SIZE 32
 
 /**
  * @brief Custom header structure for SGX quotes
@@ -90,8 +112,25 @@ typedef struct {
  * @brief Verification result structure
  */
 typedef struct {
+    /* Basic validation result */
     int valid;                     /**< 1 if valid, 0 if invalid */
     char *error_message;           /**< Error message (NULL if valid) */
+    
+    /* Detailed validation flags */
+    int mr_enclave_valid;          /**< MRENCLAVE validation result */
+    int mr_signer_valid;           /**< MRSIGNER validation result */
+    int signature_valid;           /**< Quote signature validation result */
+    int version_valid;             /**< Quote version validation result */
+    int report_data_matches_cert;  /**< Report data matches certificate */
+    int cert_chain_valid;          /**< Certificate chain validation result */
+    int attestation_key_valid;     /**< Attestation key validation result */
+    
+    /* Statistics */
+    int total_checks;              /**< Total number of checks performed */
+    int checks_passed;             /**< Number of checks that passed */
+    
+    /* Certificate verification result */
+    void *cert_result;             /**< Internal certificate verification result */
 } sgx_verification_result_t;
 
 /**
@@ -109,7 +148,7 @@ typedef struct {
  * @param file_path Path to the PEM file
  * @return Certificate pointer on success, NULL on failure
  */
-void* load_certificate(const char *file_path);
+ECHECK_API void* load_certificate(const char *file_path);
 
 /**
  * @brief Extract SGX quote from a certificate
@@ -118,7 +157,7 @@ void* load_certificate(const char *file_path);
  * @param quote_buffer Buffer to store the quote
  * @return 1 on success, 0 on failure
  */
-int extract_sgx_quote(void *cert, sgx_quote_buffer_t *quote_buffer);
+ECHECK_API int extract_sgx_quote(void *cert, sgx_quote_buffer_t *quote_buffer);
 
 /**
  * @brief Compute the hash of a certificate's public key
@@ -128,7 +167,7 @@ int extract_sgx_quote(void *cert, sgx_quote_buffer_t *quote_buffer);
  * @param hash_len Pointer to store the hash length
  * @return 1 on success, 0 on failure
  */
-int compute_pubkey_hash(void *cert, unsigned char *hash_buf, unsigned int *hash_len);
+ECHECK_API int compute_pubkey_hash(void *cert, unsigned char *hash_buf, unsigned int *hash_len);
 
 /**
  * @brief Verify report data against certificate public key hash
@@ -138,7 +177,7 @@ int compute_pubkey_hash(void *cert, unsigned char *hash_buf, unsigned int *hash_
  * @param pubkey_hash_len Hash length
  * @return 1 on success, 0 on failure
  */
-int verify_report_data(const sgx_quote_t *quote, const unsigned char *pubkey_hash, unsigned int pubkey_hash_len);
+ECHECK_API int verify_report_data(const sgx_quote_t *quote, const unsigned char *pubkey_hash, unsigned int pubkey_hash_len);
 
 /**
  * @brief Verify an SGX quote
@@ -148,12 +187,12 @@ int verify_report_data(const sgx_quote_t *quote, const unsigned char *pubkey_has
  * @param result Verification result
  * @return 1 on success, 0 on failure
  */
-int verify_sgx_quote(const unsigned char *quote_data, size_t quote_size, sgx_verification_result_t *result);
+ECHECK_API int verify_sgx_quote(const unsigned char *quote_data, size_t quote_size, sgx_verification_result_t *result);
 
 /**
  * @brief Set global verbose flag
  */
-extern int global_verbose_flag;
+ECHECK_API extern int global_verbose_flag;
 
 #ifdef __cplusplus
 }
