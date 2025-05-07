@@ -2,8 +2,7 @@
 #define SGX_CERT_VERIFY_H
 
 #include "sgx_types.h"
-#include <openssl/x509.h>
-#include <openssl/x509_vfy.h>
+#include "echeck/openssl_runtime.h"
 
 /* Certificate verification result structure */
 typedef struct {

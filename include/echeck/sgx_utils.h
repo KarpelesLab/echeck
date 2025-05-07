@@ -2,7 +2,7 @@
 #define SGX_UTILS_H
 
 #include "sgx_types.h"
-#include <openssl/evp.h>
+#include "echeck/openssl_runtime.h"
 
 /* Debug utility to dump a buffer with a name */
 void dump_buffer(const char *name, const unsigned char *data, size_t len);

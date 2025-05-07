@@ -2,9 +2,8 @@
 #define SGX_QUOTE_VERIFY_H
 
 #include "sgx_types.h"
+#include "echeck/openssl_runtime.h"
 #include "sgx_cert_verify.h"
-#include <openssl/evp.h>
-#include <openssl/x509.h>
 
 /* Result structure for verification checks */
 typedef struct {

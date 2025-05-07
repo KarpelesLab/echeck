@@ -155,17 +155,13 @@ static void *libcrypto_handle = NULL;
 #elif defined(_WIN32) || defined(_WIN64)
     /* On Windows, OpenSSL libraries might have version numbers in the filenames */
     #define LIBSSL_NAME "libssl-3.dll"  /* OpenSSL 3.0+ */
-    #define LIBSSL_NAME_FALLBACK "libssl-1_1.dll"  /* OpenSSL 1.1.x */
-    #define LIBCRYPTO_NAME "libcrypto-3.dll" /* OpenSSL 3.0+ */
-    #define LIBCRYPTO_NAME_FALLBACK "libcrypto-1_1.dll" /* OpenSSL 1.1.x */
     /* Some Windows distributions (like MSYS2) might use this naming convention instead */
-    #define LIBSSL_NAME_FALLBACK2 "libssl.dll"
-    #define LIBCRYPTO_NAME_FALLBACK2 "libcrypto.dll"
+    #define LIBSSL_NAME_FALLBACK "libssl.dll"
+    #define LIBCRYPTO_NAME "libcrypto-3.dll" /* OpenSSL 3.0+ */
+    #define LIBCRYPTO_NAME_FALLBACK "libcrypto.dll"
 #else /* Linux, Unix, etc. */
     #define LIBSSL_NAME "libssl.so.3"
-    #define LIBSSL_NAME_FALLBACK "libssl.so.1.1"
     #define LIBCRYPTO_NAME "libcrypto.so.3"
-    #define LIBCRYPTO_NAME_FALLBACK "libcrypto.so.1.1"
 #endif
 
 int init_openssl_runtime(void) {
@@ -184,17 +180,8 @@ int init_openssl_runtime(void) {
         /* Try fallback name */
         libcrypto_handle = LoadLibraryA(LIBCRYPTO_NAME_FALLBACK);
         if (!libcrypto_handle) {
-#if defined(LIBCRYPTO_NAME_FALLBACK2)
-            /* Try second fallback name */
-            libcrypto_handle = LoadLibraryA(LIBCRYPTO_NAME_FALLBACK2);
-            if (!libcrypto_handle) {
-                fprintf(stderr, "Failed to load libcrypto: error code %lu\n", GetLastError());
-                return 0;
-            }
-#else
             fprintf(stderr, "Failed to load libcrypto: error code %lu\n", GetLastError());
             return 0;
-#endif
         }
 #else
         fprintf(stderr, "Failed to load libcrypto: error code %lu\n", GetLastError());
@@ -209,21 +196,10 @@ int init_openssl_runtime(void) {
         /* Try fallback name */
         libssl_handle = LoadLibraryA(LIBSSL_NAME_FALLBACK);
         if (!libssl_handle) {
-#if defined(LIBSSL_NAME_FALLBACK2)
-            /* Try second fallback name */
-            libssl_handle = LoadLibraryA(LIBSSL_NAME_FALLBACK2);
-            if (!libssl_handle) {
-                fprintf(stderr, "Failed to load libssl: error code %lu\n", GetLastError());
-                FreeLibrary(libcrypto_handle);
-                libcrypto_handle = NULL;
-                return 0;
-            }
-#else
             fprintf(stderr, "Failed to load libssl: error code %lu\n", GetLastError());
             FreeLibrary(libcrypto_handle);
             libcrypto_handle = NULL;
             return 0;
-#endif
         }
 #else
         fprintf(stderr, "Failed to load libssl: error code %lu\n", GetLastError());
@@ -242,37 +218,17 @@ int init_openssl_runtime(void) {
     /* Try to load libcrypto */
     libcrypto_handle = dlopen(LIBCRYPTO_NAME, RTLD_LAZY);
     if (!libcrypto_handle) {
-#if defined(LIBCRYPTO_NAME_FALLBACK)
-        /* Try fallback name */
-        libcrypto_handle = dlopen(LIBCRYPTO_NAME_FALLBACK, RTLD_LAZY);
-        if (!libcrypto_handle) {
-            fprintf(stderr, "Failed to load libcrypto: %s\n", dlerror());
-            return 0;
-        }
-#else
         fprintf(stderr, "Failed to load libcrypto: %s\n", dlerror());
         return 0;
-#endif
     }
 
     /* Try to load libssl */
     libssl_handle = dlopen(LIBSSL_NAME, RTLD_LAZY);
     if (!libssl_handle) {
-#if defined(LIBSSL_NAME_FALLBACK)
-        /* Try fallback name */
-        libssl_handle = dlopen(LIBSSL_NAME_FALLBACK, RTLD_LAZY);
-        if (!libssl_handle) {
-            fprintf(stderr, "Failed to load libssl: %s\n", dlerror());
-            dlclose(libcrypto_handle);
-            libcrypto_handle = NULL;
-            return 0;
-        }
-#else
         fprintf(stderr, "Failed to load libssl: %s\n", dlerror());
         dlclose(libcrypto_handle);
         libcrypto_handle = NULL;
         return 0;
-#endif
     }
 #endif
 

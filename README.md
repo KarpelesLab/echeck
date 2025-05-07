@@ -95,7 +95,10 @@ The project requires OpenSSL development libraries to be installed.
 Run the build script to compile the project:
 
 ```
-./build.sh
+./build.sh                    # Standard build
+./build.sh runtime-link       # Build with runtime OpenSSL linking
+./build.sh test               # Build and run tests
+./build.sh runtime-link test  # Build with runtime linking and run tests
 ```
 
 This will create a `build` directory with the `echeck` executable and `libecheck.a` static library.
@@ -108,6 +111,22 @@ cd build
 cmake ..
 make
 ```
+
+### Runtime linking of OpenSSL
+
+The project supports an option to dynamically load OpenSSL libraries at runtime instead of linking them at build time:
+
+```
+mkdir -p build
+cd build
+cmake -DOPENSSL_RUNTIME_LINK=ON ..
+make
+```
+
+This option is useful in environments where:
+- You want to deploy the binary without OpenSSL dependencies
+- You need to use a specific OpenSSL version at runtime
+- The system may have multiple OpenSSL versions installed
 
 The executable will be located at `build/echeck` and the static library at `build/libecheck.a`.
 
