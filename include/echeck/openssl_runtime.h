@@ -225,6 +225,9 @@ extern void (*OPENSSL_cleanup)(void);  /* Modern equivalent of EVP_cleanup() + E
 /* Load OpenSSL dynamically at runtime */
 int init_openssl_runtime(void);
 
+/* Clean up and unload OpenSSL libraries */
+void cleanup_openssl_runtime(void);
+
 #else /* !OPENSSL_RUNTIME_LINK */
 
 /* When not using runtime linking, include the standard OpenSSL headers */

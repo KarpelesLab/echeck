@@ -2,7 +2,14 @@
 #include <string.h>
 
 #ifdef OPENSSL_RUNTIME_LINK
+
+/* Include platform-specific headers for dynamic library loading */
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+#else
 #include <dlfcn.h>
+#endif
+
 #include "echeck/openssl_runtime.h"
 
 /* Define all OpenSSL function pointers */
@@ -93,9 +100,35 @@ void (*CRYPTO_free)(void *ptr, const char *file, int line) = NULL;
 void (*OPENSSL_cleanup)(void) = NULL; /* Modern equivalent of the deprecated functions */
 
 /* Library handles for libssl and libcrypto */
+#if defined(_WIN32) || defined(_WIN64)
+static HMODULE libssl_handle = NULL;
+static HMODULE libcrypto_handle = NULL;
+#else
 static void *libssl_handle = NULL;
 static void *libcrypto_handle = NULL;
+#endif
 
+#if defined(_WIN32) || defined(_WIN64)
+/* Windows implementation using GetProcAddress */
+#define LOAD_SYMBOL(handle, symbol) \
+    do { \
+        *(void **)(&symbol) = (void *)GetProcAddress(handle, #symbol); \
+        if (!symbol) { \
+            fprintf(stderr, "Error loading symbol %s: error code %lu\n", #symbol, GetLastError()); \
+            return 0; \
+        } \
+    } while(0)
+
+/* Version of LOAD_SYMBOL that does not fail if the symbol is not found */
+#define LOAD_SYMBOL_OPTIONAL(handle, symbol) \
+    do { \
+        *(void **)(&symbol) = (void *)GetProcAddress(handle, #symbol); \
+        if (!symbol) { \
+            fprintf(stderr, "Warning: Optional symbol %s not found, functionality may be limited\n", #symbol); \
+        } \
+    } while(0)
+#else
+/* Unix implementation using dlsym */
 #define LOAD_SYMBOL(handle, symbol) \
     do { \
         *(void **)(&symbol) = dlsym(handle, #symbol); \
@@ -113,14 +146,21 @@ static void *libcrypto_handle = NULL;
             fprintf(stderr, "Warning: Optional symbol %s not found, functionality may be limited\n", #symbol); \
         } \
     } while(0)
+#endif
 
 /* Library name configuration based on platform */
 #if defined(__APPLE__)
     #define LIBSSL_NAME "libssl.dylib"
     #define LIBCRYPTO_NAME "libcrypto.dylib"
 #elif defined(_WIN32) || defined(_WIN64)
-    #define LIBSSL_NAME "libssl.dll"
-    #define LIBCRYPTO_NAME "libcrypto.dll"
+    /* On Windows, OpenSSL libraries might have version numbers in the filenames */
+    #define LIBSSL_NAME "libssl-3.dll"  /* OpenSSL 3.0+ */
+    #define LIBSSL_NAME_FALLBACK "libssl-1_1.dll"  /* OpenSSL 1.1.x */
+    #define LIBCRYPTO_NAME "libcrypto-3.dll" /* OpenSSL 3.0+ */
+    #define LIBCRYPTO_NAME_FALLBACK "libcrypto-1_1.dll" /* OpenSSL 1.1.x */
+    /* Some Windows distributions (like MSYS2) might use this naming convention instead */
+    #define LIBSSL_NAME_FALLBACK2 "libssl.dll"
+    #define LIBCRYPTO_NAME_FALLBACK2 "libcrypto.dll"
 #else /* Linux, Unix, etc. */
     #define LIBSSL_NAME "libssl.so.3"
     #define LIBSSL_NAME_FALLBACK "libssl.so.1.1"
@@ -134,6 +174,68 @@ int init_openssl_runtime(void) {
         return 1;
     }
 
+#if defined(_WIN32) || defined(_WIN64)
+    /* Windows implementation using LoadLibrary */
+    
+    /* Try to load libcrypto */
+    libcrypto_handle = LoadLibraryA(LIBCRYPTO_NAME);
+    if (!libcrypto_handle) {
+#if defined(LIBCRYPTO_NAME_FALLBACK)
+        /* Try fallback name */
+        libcrypto_handle = LoadLibraryA(LIBCRYPTO_NAME_FALLBACK);
+        if (!libcrypto_handle) {
+#if defined(LIBCRYPTO_NAME_FALLBACK2)
+            /* Try second fallback name */
+            libcrypto_handle = LoadLibraryA(LIBCRYPTO_NAME_FALLBACK2);
+            if (!libcrypto_handle) {
+                fprintf(stderr, "Failed to load libcrypto: error code %lu\n", GetLastError());
+                return 0;
+            }
+#else
+            fprintf(stderr, "Failed to load libcrypto: error code %lu\n", GetLastError());
+            return 0;
+#endif
+        }
+#else
+        fprintf(stderr, "Failed to load libcrypto: error code %lu\n", GetLastError());
+        return 0;
+#endif
+    }
+
+    /* Try to load libssl */
+    libssl_handle = LoadLibraryA(LIBSSL_NAME);
+    if (!libssl_handle) {
+#if defined(LIBSSL_NAME_FALLBACK)
+        /* Try fallback name */
+        libssl_handle = LoadLibraryA(LIBSSL_NAME_FALLBACK);
+        if (!libssl_handle) {
+#if defined(LIBSSL_NAME_FALLBACK2)
+            /* Try second fallback name */
+            libssl_handle = LoadLibraryA(LIBSSL_NAME_FALLBACK2);
+            if (!libssl_handle) {
+                fprintf(stderr, "Failed to load libssl: error code %lu\n", GetLastError());
+                FreeLibrary(libcrypto_handle);
+                libcrypto_handle = NULL;
+                return 0;
+            }
+#else
+            fprintf(stderr, "Failed to load libssl: error code %lu\n", GetLastError());
+            FreeLibrary(libcrypto_handle);
+            libcrypto_handle = NULL;
+            return 0;
+#endif
+        }
+#else
+        fprintf(stderr, "Failed to load libssl: error code %lu\n", GetLastError());
+        FreeLibrary(libcrypto_handle);
+        libcrypto_handle = NULL;
+        return 0;
+#endif
+    }
+    
+#else
+    /* Unix implementation using dlopen */
+    
     /* Clear any previous errors */
     dlerror();
 
@@ -172,6 +274,7 @@ int init_openssl_runtime(void) {
         return 0;
 #endif
     }
+#endif
 
     /* Load all required symbols from libcrypto */
     LOAD_SYMBOL(libcrypto_handle, BIO_new_file);
@@ -275,6 +378,37 @@ int init_openssl_runtime(void) {
     /* Successfully loaded all key OpenSSL functions */
     
     return 1;
+}
+
+/* Function to unload OpenSSL libraries */
+void cleanup_openssl_runtime(void) {
+    if (libssl_handle || libcrypto_handle) {
+        /* Call OPENSSL_cleanup if available */
+        if (OPENSSL_cleanup) {
+            OPENSSL_cleanup();
+        }
+        
+        /* Close library handles */
+#if defined(_WIN32) || defined(_WIN64)
+        if (libssl_handle) {
+            FreeLibrary(libssl_handle);
+            libssl_handle = NULL;
+        }
+        if (libcrypto_handle) {
+            FreeLibrary(libcrypto_handle);
+            libcrypto_handle = NULL;
+        }
+#else
+        if (libssl_handle) {
+            dlclose(libssl_handle);
+            libssl_handle = NULL;
+        }
+        if (libcrypto_handle) {
+            dlclose(libcrypto_handle);
+            libcrypto_handle = NULL;
+        }
+#endif
+    }
 }
 
 #endif /* OPENSSL_RUNTIME_LINK */

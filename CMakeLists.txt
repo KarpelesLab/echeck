@@ -43,7 +43,14 @@ target_include_directories(libecheck PRIVATE ${OPENSSL_INCLUDE_DIRS})
 if(NOT OPENSSL_RUNTIME_LINK)
     target_link_libraries(libecheck PRIVATE ${OPENSSL_LIBRARIES})
 else()
-    target_link_libraries(libecheck PRIVATE dl)  # Link with libdl for dlopen/dlsym
+    # For runtime linking, link with appropriate dynamic loading library
+    if(WIN32)
+        # Windows doesn't need explicit linking as LoadLibrary is part of kernel32.lib
+        # which is linked by default on Windows
+    else()
+        # Unix systems need libdl for dlopen/dlsym
+        target_link_libraries(libecheck PRIVATE dl)
+    endif()
 endif()
 
 # Add executable target

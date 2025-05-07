@@ -18,6 +18,9 @@ int initialize_openssl(void) {
         fprintf(stderr, "Failed to initialize OpenSSL at runtime\n");
         return 0;
     }
+    
+    /* Register cleanup function to run at exit */
+    atexit(cleanup_openssl_runtime);
 #endif
 
     /* Modern OpenSSL initialization (3.0+) doesn't need explicit initialization calls
