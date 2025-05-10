@@ -254,7 +254,11 @@ jobs:
         cd build
         cmake --build . --config Release
 
-    # Skip tests for ARM64 as we're running on emulation
+    - name: Run tests
+      shell: pwsh
+      run: |
+        cd build
+        ctest -C Release --output-on-failure
 
     - name: Create package
       shell: pwsh
