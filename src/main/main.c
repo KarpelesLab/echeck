@@ -1,8 +1,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(_WIN32) || defined(_WIN64)
+/* Windows-specific includes */
+#include <Windows.h>
+/* Windows doesn't have unistd.h or getopt.h, use a third-party implementation */
+#include "../include/getopt_win.h"
+#else
+/* Unix-specific includes */
 #include <unistd.h>
 #include <getopt.h>
+#endif
+
 #include <openssl/sha.h>
 
 #include "echeck.h"

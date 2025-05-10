@@ -5,8 +5,17 @@ project(echeck C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# Compiler options
-add_compile_options(-Wall -pipe -O2 -g -ggdb)
+# Compiler options - platform specific
+if(WIN32)
+    # Windows: avoid compiler warnings for unknown options
+    add_compile_options(/W3)
+
+    # Add define for Windows platform
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+else()
+    # Unix/Linux/macOS
+    add_compile_options(-Wall -pipe -O2 -g -ggdb)
+endif()
 
 # Option to use runtime loading of OpenSSL
 option(OPENSSL_RUNTIME_LINK "Load OpenSSL functions at runtime using dlopen instead of linking at build time" OFF)
