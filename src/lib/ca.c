@@ -86,7 +86,7 @@ STACK_OF(X509) *get_trusted_ca_stack(void) {
     
     
     /* Return the certificate stack */
-    if (global_verbose_flag) {
+    if (is_verbose_mode()) {
         fprintf(stderr, "Loaded %d built-in CA certificates for SGX validation\n", sk_X509_num(ca_stack));
     }
     return ca_stack;
