@@ -150,28 +150,41 @@ jobs:
       shell: pwsh
       run: |
         choco install openssl
-        echo "OPENSSL_ROOT_DIR=C:/Program Files/OpenSSL-Win64" >> $env:GITHUB_ENV
-        echo "OPENSSL_INCLUDE_DIR=C:/Program Files/OpenSSL-Win64/include" >> $env:GITHUB_ENV
-        echo "OPENSSL_CRYPTO_LIBRARY=C:/Program Files/OpenSSL-Win64/lib/libcrypto.lib" >> $env:GITHUB_ENV
-        echo "OPENSSL_SSL_LIBRARY=C:/Program Files/OpenSSL-Win64/lib/libssl.lib" >> $env:GITHUB_ENV
+
+        # Check both possible installation paths
+        if (Test-Path "C:/Program Files/OpenSSL") {
+          $opensslPath = "C:/Program Files/OpenSSL"
+        } elseif (Test-Path "C:/Program Files/OpenSSL-Win64") {
+          $opensslPath = "C:/Program Files/OpenSSL-Win64"
+        } else {
+          Write-Host "ERROR: Could not find OpenSSL installation directory!"
+          exit 1
+        }
+
+        echo "OPENSSL_ROOT_DIR=$opensslPath" >> $env:GITHUB_ENV
+        echo "OPENSSL_INCLUDE_DIR=$opensslPath/include" >> $env:GITHUB_ENV
+
+        Write-Host "Using OpenSSL installation at: $opensslPath"
+
+        # Verify paths to ensure they exist
+        Get-ChildItem -Path "$opensslPath" -Recurse -Include *.lib | Select-Object -First 10 | ForEach-Object { $_.FullName }
 
     - name: Configure CMake
       shell: pwsh
       run: |
         New-Item -ItemType Directory -Force -Path build
         cd build
+
+        # Use simpler configuration with fewer variables
+        # Let CMake's FindOpenSSL module do most of the work
         if ("${{ matrix.link-type }}" -eq "Runtime") {
           cmake -G "Visual Studio 17 2022" -A x64 -DOPENSSL_RUNTIME_LINK=ON `
             -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
-            -DOPENSSL_INCLUDE_DIR="$env:OPENSSL_INCLUDE_DIR" `
-            -DOPENSSL_CRYPTO_LIBRARY="$env:OPENSSL_CRYPTO_LIBRARY" `
-            -DOPENSSL_SSL_LIBRARY="$env:OPENSSL_SSL_LIBRARY" ..
+            -DOPENSSL_INCLUDE_DIR="$env:OPENSSL_INCLUDE_DIR" ..
         } else {
           cmake -G "Visual Studio 17 2022" -A x64 `
             -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
-            -DOPENSSL_INCLUDE_DIR="$env:OPENSSL_INCLUDE_DIR" `
-            -DOPENSSL_CRYPTO_LIBRARY="$env:OPENSSL_CRYPTO_LIBRARY" `
-            -DOPENSSL_SSL_LIBRARY="$env:OPENSSL_SSL_LIBRARY" ..
+            -DOPENSSL_INCLUDE_DIR="$env:OPENSSL_INCLUDE_DIR" ..
         }
 
     - name: Build
@@ -231,8 +244,24 @@ jobs:
       run: |
         # For now, we still use x64 headers (compatible) but will use runtime loading
         # In the future, we'll use custom-built ARM64 OpenSSL from our other workflow
-        echo "OPENSSL_ROOT_DIR=C:/Program Files/OpenSSL-Win64" >> $env:GITHUB_ENV
-        echo "OPENSSL_INCLUDE_DIR=C:/Program Files/OpenSSL-Win64/include" >> $env:GITHUB_ENV
+
+        # Check both possible installation paths
+        if (Test-Path "C:/Program Files/OpenSSL") {
+          $opensslPath = "C:/Program Files/OpenSSL"
+        } elseif (Test-Path "C:/Program Files/OpenSSL-Win64") {
+          $opensslPath = "C:/Program Files/OpenSSL-Win64"
+        } else {
+          Write-Host "ERROR: Could not find OpenSSL installation directory!"
+          exit 1
+        }
+
+        echo "OPENSSL_ROOT_DIR=$opensslPath" >> $env:GITHUB_ENV
+        echo "OPENSSL_INCLUDE_DIR=$opensslPath/include" >> $env:GITHUB_ENV
+
+        Write-Host "Using OpenSSL installation at: $opensslPath"
+
+        # Verify paths to ensure they exist
+        Get-ChildItem -Path "$opensslPath" -Recurse -Include *.dll, *.lib | Select-Object -First 10 | ForEach-Object { $_.FullName }
 
         # TODO: Once we have our ARM64 OpenSSL build, we can use:
         # - Download the OpenSSL ARM64 artifact
@@ -260,6 +289,29 @@ jobs:
       shell: pwsh
       run: |
         cd build
+
+        # For ARM64 runtime builds, add diagnostic tracing to see which DLLs are loaded
+        if ("${{ matrix.link-type }}" -eq "Runtime") {
+          # Copy the Release binaries to a test directory
+          New-Item -ItemType Directory -Force -Path test
+          Copy-Item "Release/echeck.exe" -Destination "test/"
+
+          # List available OpenSSL DLLs
+          Write-Host "Available OpenSSL DLLs:"
+          Get-ChildItem -Path "C:/Program Files" -Recurse -Include *ssl*.dll, *crypto*.dll -ErrorAction SilentlyContinue | Select-Object -First 20 | ForEach-Object { $_.FullName }
+
+          # Run the test program - output will show which DLLs are loaded at runtime
+          Write-Host "Running test program manually to see DLL loading:"
+          cd test
+          try {
+            ./echeck.exe --version
+          } catch {
+            Write-Host "Error running test program: $_"
+          }
+          cd ..
+        }
+
+        # Run the actual tests
         ctest -C Release --output-on-failure
 
     - name: Create package
@@ -286,8 +338,12 @@ jobs:
 
         # Download sample OpenSSL DLLs from program files (x64 ones for now)
         # TODO: Replace with ARM64 OpenSSL DLLs once we have our custom build
-        Copy-Item "C:/Program Files/OpenSSL-Win64/bin/libcrypto-3-x64.dll" -Destination "package/$ARTIFACT_NAME/bin/openssl/" -ErrorAction SilentlyContinue
-        Copy-Item "C:/Program Files/OpenSSL-Win64/bin/libssl-3-x64.dll" -Destination "package/$ARTIFACT_NAME/bin/openssl/" -ErrorAction SilentlyContinue
+        $opensslPath = $env:OPENSSL_ROOT_DIR
+        Write-Host "Copying OpenSSL DLLs from $opensslPath/bin"
+        Get-ChildItem -Path "$opensslPath/bin" -Include *.dll | ForEach-Object {
+            Write-Host "  Copying $($_.Name)"
+            Copy-Item $_.FullName -Destination "package/$ARTIFACT_NAME/bin/openssl/" -ErrorAction SilentlyContinue
+        }
 
         # Create zip archive
         Compress-Archive -Path "package/$ARTIFACT_NAME" -DestinationPath "package/$ARTIFACT_NAME.zip"

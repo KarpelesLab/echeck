@@ -187,8 +187,19 @@ int init_openssl_runtime(void) {
     /* Define platform-specific search paths for Windows */
     const char* crypto_paths[] = {
         LIBCRYPTO_NAME,  /* Try the default name first */
+#if defined(_M_ARM64) || defined(__aarch64__)
+        /* ARM64-specific search paths */
+        "C:\\Program Files\\OpenSSL-Win64\\bin\\libcrypto-3-arm64.dll",
+        "C:\\Program Files\\OpenSSL\\bin\\libcrypto-3-arm64.dll",
+        "C:\\Program Files\\OpenSSL-ARM64\\bin\\libcrypto-3-arm64.dll",
+        /* Fall back to x64 DLLs if ARM64 not available */
         "C:\\Program Files\\OpenSSL-Win64\\bin\\libcrypto-3-x64.dll",
         "C:\\Program Files\\OpenSSL\\bin\\libcrypto-3-x64.dll",
+#else
+        /* x64 search paths */
+        "C:\\Program Files\\OpenSSL-Win64\\bin\\libcrypto-3-x64.dll",
+        "C:\\Program Files\\OpenSSL\\bin\\libcrypto-3-x64.dll",
+#endif
         "C:\\OpenSSL-Win64\\bin\\libcrypto-3-x64.dll",
         "C:\\OpenSSL\\bin\\libcrypto-3-x64.dll",
         "libcrypto-3.dll", /* Try for other named version too */
@@ -197,8 +208,19 @@ int init_openssl_runtime(void) {
 
     const char* ssl_paths[] = {
         LIBSSL_NAME,  /* Try the default name first */
+#if defined(_M_ARM64) || defined(__aarch64__)
+        /* ARM64-specific search paths */
+        "C:\\Program Files\\OpenSSL-Win64\\bin\\libssl-3-arm64.dll",
+        "C:\\Program Files\\OpenSSL\\bin\\libssl-3-arm64.dll",
+        "C:\\Program Files\\OpenSSL-ARM64\\bin\\libssl-3-arm64.dll",
+        /* Fall back to x64 DLLs if ARM64 not available */
         "C:\\Program Files\\OpenSSL-Win64\\bin\\libssl-3-x64.dll",
         "C:\\Program Files\\OpenSSL\\bin\\libssl-3-x64.dll",
+#else
+        /* x64 search paths */
+        "C:\\Program Files\\OpenSSL-Win64\\bin\\libssl-3-x64.dll",
+        "C:\\Program Files\\OpenSSL\\bin\\libssl-3-x64.dll",
+#endif
         "C:\\OpenSSL-Win64\\bin\\libssl-3-x64.dll",
         "C:\\OpenSSL\\bin\\libssl-3-x64.dll",
         "libssl-3.dll", /* Try for other named version too */
