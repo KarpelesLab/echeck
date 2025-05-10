@@ -10,167 +10,190 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    name: Build on ${{ matrix.os }} (${{ matrix.runtime-link && 'Runtime' || 'Static' }} OpenSSL)
-    runs-on: ${{ matrix.os }}
+  build-ubuntu:
+    name: Build on Ubuntu (${{ matrix.link-type }} OpenSSL)
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-latest, macos-latest]
-        runtime-link: [false, true]
+        link-type: [Static, Runtime]
     
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install OpenSSL (Ubuntu)
-      if: matrix.os == 'ubuntu-22.04'
+    - name: Install OpenSSL
       run: |
         sudo apt-get update
         sudo apt-get install -y libssl-dev
 
-    - name: Install OpenSSL (macOS)
-      if: matrix.os == 'macos-latest'
+    - name: Configure CMake
+      run: |
+        mkdir -p build
+        cd build
+        if [ "${{ matrix.link-type }}" == "Runtime" ]; then
+          cmake -DOPENSSL_RUNTIME_LINK=ON ..
+        else
+          cmake ..
+        fi
+
+    - name: Build
+      run: |
+        cd build
+        make VERBOSE=1
+
+    - name: Run tests
+      run: |
+        cd build
+        ctest --output-on-failure
+
+    - name: Create package
+      run: |
+        mkdir -p package
+        ARTIFACT_NAME="echeck-ubuntu-$(date +%Y%m%d)-${{ matrix.link-type == 'Runtime' && 'runtime' || 'static' }}"
+        mkdir -p "package/$ARTIFACT_NAME/bin"
+        mkdir -p "package/$ARTIFACT_NAME/lib"
+        mkdir -p "package/$ARTIFACT_NAME/include/echeck"
+        
+        # Copy files
+        cp build/echeck "package/$ARTIFACT_NAME/bin/"
+        cp build/libecheck.a "package/$ARTIFACT_NAME/lib/"
+        cp include/echeck.h "package/$ARTIFACT_NAME/include/echeck/"
+        cp README.md LICENSE* "package/$ARTIFACT_NAME/" 2>/dev/null || true
+        
+        # Create tarball
+        cd package
+        tar -czvf "$ARTIFACT_NAME.tar.gz" "$ARTIFACT_NAME"
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: echeck-ubuntu-${{ matrix.link-type == 'Runtime' && 'runtime' || 'static' }}
+        path: package/*.tar.gz
+
+  build-macos:
+    name: Build on macOS (${{ matrix.link-type }} OpenSSL)
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        link-type: [Static, Runtime]
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install OpenSSL
       run: |
         brew install openssl@3 || true
         echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
         echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@3)/include" >> $GITHUB_ENV
 
-    - name: Install OpenSSL (Windows)
-      if: matrix.os == 'windows-latest'
-      run: |
-        choco install openssl
-        echo "OPENSSL_ROOT_DIR=C:/Program Files/OpenSSL-Win64" >> $env:GITHUB_ENV
-        echo "OPENSSL_LIBRARIES=C:/Program Files/OpenSSL-Win64/lib" >> $env:GITHUB_ENV
-        echo "OPENSSL_INCLUDE_DIR=C:/Program Files/OpenSSL-Win64/include" >> $env:GITHUB_ENV
-
-    - name: Configure CMake (Ubuntu with runtime link)
-      if: matrix.os == 'ubuntu-22.04' && matrix.runtime-link
+    - name: Configure CMake
       run: |
         mkdir -p build
         cd build
-        cmake -DOPENSSL_RUNTIME_LINK=ON ..
+        if [ "${{ matrix.link-type }}" == "Runtime" ]; then
+          cmake -DOPENSSL_RUNTIME_LINK=ON -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" \
+            -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
+        else
+          cmake -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" \
+            -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
+        fi
 
-    - name: Configure CMake (macOS with runtime link)
-      if: matrix.os == 'macos-latest' && matrix.runtime-link
-      run: |
-        mkdir -p build
-        cd build
-        cmake -DOPENSSL_RUNTIME_LINK=ON -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
-
-    - name: Configure CMake (Ubuntu without runtime link)
-      if: matrix.os == 'ubuntu-22.04' && !matrix.runtime-link
-      run: |
-        mkdir -p build
-        cd build
-        cmake ..
-
-    - name: Configure CMake (macOS without runtime link)
-      if: matrix.os == 'macos-latest' && !matrix.runtime-link
-      run: |
-        mkdir -p build
-        cd build
-        cmake -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
-
-    - name: Configure CMake (Windows with runtime link)
-      if: matrix.os == 'windows-latest' && matrix.runtime-link
-      shell: pwsh
-      run: |
-        New-Item -ItemType Directory -Force -Path build
-        cd build
-        cmake -G "Visual Studio 17 2022" -A x64 -DOPENSSL_RUNTIME_LINK=ON -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" -DOPENSSL_LIBRARIES="$env:OPENSSL_LIBRARIES" -DOPENSSL_INCLUDE_DIR="$env:OPENSSL_INCLUDE_DIR" ..
-
-    - name: Configure CMake (Windows without runtime link)
-      if: matrix.os == 'windows-latest' && !matrix.runtime-link
-      shell: pwsh
-      run: |
-        New-Item -ItemType Directory -Force -Path build
-        cd build
-        cmake -G "Visual Studio 17 2022" -A x64 -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" -DOPENSSL_LIBRARIES="$env:OPENSSL_LIBRARIES" -DOPENSSL_INCLUDE_DIR="$env:OPENSSL_INCLUDE_DIR" ..
-
-    - name: Build (Unix)
-      if: matrix.os == 'ubuntu-22.04' || matrix.os == 'macos-latest'
+    - name: Build
       run: |
         cd build
         make VERBOSE=1
 
-    - name: Build (Windows)
-      if: matrix.os == 'windows-latest'
-      shell: pwsh
-      run: |
-        cd build
-        cmake --build . --config Release
-
-    - name: Run tests (macOS)
-      if: matrix.os == 'macos-latest'
+    - name: Run tests
       run: |
         cd build
         # Set DYLD_LIBRARY_PATH for macOS runtime tests
         export DYLD_LIBRARY_PATH=/opt/homebrew/opt/openssl@3/lib:$DYLD_LIBRARY_PATH
         ctest --output-on-failure
 
-    - name: Run tests (Ubuntu)
-      if: matrix.os == 'ubuntu-22.04'
+    - name: Create package
+      run: |
+        mkdir -p package
+        ARTIFACT_NAME="echeck-macos-$(date +%Y%m%d)-${{ matrix.link-type == 'Runtime' && 'runtime' || 'static' }}"
+        mkdir -p "package/$ARTIFACT_NAME/bin"
+        mkdir -p "package/$ARTIFACT_NAME/lib"
+        mkdir -p "package/$ARTIFACT_NAME/include/echeck"
+        
+        # Copy files
+        cp build/echeck "package/$ARTIFACT_NAME/bin/"
+        cp build/libecheck.a "package/$ARTIFACT_NAME/lib/"
+        cp include/echeck.h "package/$ARTIFACT_NAME/include/echeck/"
+        cp README.md LICENSE* "package/$ARTIFACT_NAME/" 2>/dev/null || true
+        
+        # Create tarball
+        cd package
+        tar -czvf "$ARTIFACT_NAME.tar.gz" "$ARTIFACT_NAME"
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: echeck-macos-${{ matrix.link-type == 'Runtime' && 'runtime' || 'static' }}
+        path: package/*.tar.gz
+
+  build-windows:
+    name: Build on Windows (${{ matrix.link-type }} OpenSSL)
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        link-type: [Static, Runtime]
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install OpenSSL
+      shell: pwsh
+      run: |
+        choco install openssl
+        echo "OPENSSL_ROOT_DIR=C:/Program Files/OpenSSL-Win64" >> $env:GITHUB_ENV
+        echo "OPENSSL_LIBRARIES=C:/Program Files/OpenSSL-Win64/lib" >> $env:GITHUB_ENV
+        echo "OPENSSL_INCLUDE_DIR=C:/Program Files/OpenSSL-Win64/include" >> $env:GITHUB_ENV
+
+    - name: Configure CMake
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Force -Path build
+        cd build
+        if ("${{ matrix.link-type }}" -eq "Runtime") {
+          cmake -G "Visual Studio 17 2022" -A x64 -DOPENSSL_RUNTIME_LINK=ON `
+            -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
+            -DOPENSSL_LIBRARIES="$env:OPENSSL_LIBRARIES" `
+            -DOPENSSL_INCLUDE_DIR="$env:OPENSSL_INCLUDE_DIR" ..
+        } else {
+          cmake -G "Visual Studio 17 2022" -A x64 `
+            -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
+            -DOPENSSL_LIBRARIES="$env:OPENSSL_LIBRARIES" `
+            -DOPENSSL_INCLUDE_DIR="$env:OPENSSL_INCLUDE_DIR" ..
+        }
+
+    - name: Build
+      shell: pwsh
       run: |
         cd build
-        ctest --output-on-failure
+        cmake --build . --config Release
 
-    - name: Run tests (Windows)
-      if: matrix.os == 'windows-latest'
+    - name: Run tests
       shell: pwsh
       run: |
         cd build
         ctest -C Release --output-on-failure
 
-    - name: Create package directory
-      run: mkdir -p package
-
-    - name: Package library (Ubuntu)
-      if: matrix.os == 'ubuntu-22.04'
-      run: |
-        # Create artifact directory
-        ARTIFACT_NAME=echeck-ubuntu-$(date +%Y%m%d)-${{ matrix.runtime-link && 'runtime' || 'static' }}
-        mkdir -p "package/$ARTIFACT_NAME/bin"
-        mkdir -p "package/$ARTIFACT_NAME/lib"
-        mkdir -p "package/$ARTIFACT_NAME/include/echeck"
-        
-        # Copy files
-        cp build/echeck "package/$ARTIFACT_NAME/bin/"
-        cp build/libecheck.a "package/$ARTIFACT_NAME/lib/"
-        cp include/echeck.h "package/$ARTIFACT_NAME/include/echeck/"
-        cp README.md LICENSE* "package/$ARTIFACT_NAME/" 2>/dev/null || true
-        
-        # Create tarball
-        cd package
-        tar -czvf "$ARTIFACT_NAME.tar.gz" "$ARTIFACT_NAME"
-
-    - name: Package library (macOS)
-      if: matrix.os == 'macos-latest'
-      run: |
-        # Create artifact directory
-        ARTIFACT_NAME=echeck-macos-$(date +%Y%m%d)-${{ matrix.runtime-link && 'runtime' || 'static' }}
-        mkdir -p "package/$ARTIFACT_NAME/bin"
-        mkdir -p "package/$ARTIFACT_NAME/lib"
-        mkdir -p "package/$ARTIFACT_NAME/include/echeck"
-        
-        # Copy files
-        cp build/echeck "package/$ARTIFACT_NAME/bin/"
-        cp build/libecheck.a "package/$ARTIFACT_NAME/lib/"
-        cp include/echeck.h "package/$ARTIFACT_NAME/include/echeck/"
-        cp README.md LICENSE* "package/$ARTIFACT_NAME/" 2>/dev/null || true
-        
-        # Create tarball
-        cd package
-        tar -czvf "$ARTIFACT_NAME.tar.gz" "$ARTIFACT_NAME"
-
-    - name: Package library (Windows)
-      if: matrix.os == 'windows-latest'
+    - name: Create package
       shell: pwsh
       run: |
+        $linkType = "${{ matrix.link-type }}"
+        $linkTypeLower = if ($linkType -eq "Runtime") { "runtime" } else { "static" }
+        
         # Create artifact directory
-        $ARTIFACT_NAME = "echeck-windows-$(Get-Date -Format 'yyyyMMdd')-$('${{ matrix.runtime-link }}' -eq 'true' ? 'runtime' : 'static')"
-        New-Item -ItemType Directory -Path "package/$ARTIFACT_NAME/bin" -Force
-        New-Item -ItemType Directory -Path "package/$ARTIFACT_NAME/lib" -Force
-        New-Item -ItemType Directory -Path "package/$ARTIFACT_NAME/include/echeck" -Force
+        $ARTIFACT_NAME = "echeck-windows-$(Get-Date -Format 'yyyyMMdd')-$linkTypeLower"
+        New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/bin"
+        New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/lib"
+        New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/include/echeck"
         
         # Copy files
         Copy-Item "build/Release/echeck.exe" -Destination "package/$ARTIFACT_NAME/bin/"
@@ -182,29 +205,25 @@ jobs:
         # Create zip archive
         Compress-Archive -Path "package/$ARTIFACT_NAME" -DestinationPath "package/$ARTIFACT_NAME.zip"
 
-    - name: Upload Ubuntu artifacts
-      if: matrix.os == 'ubuntu-22.04'
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: echeck-ubuntu-${{ matrix.runtime-link && 'runtime' || 'static' }}
-        path: package/*.tar.gz
-
-    - name: Upload macOS artifacts
-      if: matrix.os == 'macos-latest'
-      uses: actions/upload-artifact@v4
-      with:
-        name: echeck-macos-${{ matrix.runtime-link && 'runtime' || 'static' }}
-        path: package/*.tar.gz
-
-    - name: Upload Windows artifacts
-      if: matrix.os == 'windows-latest'
-      uses: actions/upload-artifact@v4
-      with:
-        name: echeck-windows-${{ matrix.runtime-link && 'runtime' || 'static' }}
+        name: echeck-windows-${{ matrix.link-type == 'Runtime' && 'runtime' || 'static' }}
         path: package/*.zip
+
+  release-artifacts:
+    name: Upload artifacts to release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    needs: [build-ubuntu, build-macos, build-windows]
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
         
     - name: Upload artifacts to release
-      if: github.event_name == 'release'
       uses: actions/github-script@v7
       with:
         script: |
@@ -215,29 +234,26 @@ jobs:
           // Get the release ID
           const release = context.payload.release;
           
-          // Find all package files
-          let packageDir = 'package';
-          let files = [];
+          // Iterate through all downloaded artifacts
+          const artifactsDir = 'artifacts';
+          const artifacts = fs.readdirSync(artifactsDir);
           
-          if ('${{ matrix.os }}' === 'windows-latest') {
-            files = fs.readdirSync(packageDir).filter(file => file.endsWith('.zip'));
-          } else {
-            files = fs.readdirSync(packageDir).filter(file => file.endsWith('.tar.gz'));
-          }
-          
-          // Upload each file to the release
-          for (const file of files) {
-            const filePath = path.join(packageDir, file);
+          for (const artifact of artifacts) {
+            const artifactDir = path.join(artifactsDir, artifact);
+            const files = fs.readdirSync(artifactDir);
             
-            console.log(`Uploading ${filePath} to release ${release.id}`);
-            
-            const fileContent = fs.readFileSync(filePath);
-
-            await github.rest.repos.uploadReleaseAsset({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              release_id: release.id,
-              name: file,
-              data: fileContent
-            });
+            for (const file of files) {
+              const filePath = path.join(artifactDir, file);
+              console.log(`Uploading ${filePath} to release ${release.id}`);
+              
+              const fileContent = fs.readFileSync(filePath);
+              
+              await github.rest.repos.uploadReleaseAsset({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: release.id,
+                name: file,
+                data: fileContent
+              });
+            }
           }
