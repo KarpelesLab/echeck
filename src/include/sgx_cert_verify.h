@@ -15,6 +15,7 @@
 #include <openssl/sha.h>
 #include <openssl/evp.h>
 #include <openssl/ecdsa.h>
+#include <openssl/err.h>
 #endif
 
 /* Certificate verification result structure */
