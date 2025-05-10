@@ -12,119 +12,80 @@ int extract_sgx_quote(void *cert_ptr, sgx_quote_buffer_t *quote_buffer) {
     int i, nid, ext_count;
     X509_EXTENSION *ext = NULL;
     ASN1_OCTET_STRING *ext_data = NULL;
-    
-    
+
+
     /* Initialize output */
     quote_buffer->data = NULL;
     quote_buffer->length = 0;
-    
+
     /* Register the SGX OID if it's not already known */
-    if (OBJ_create == NULL) {
-        fprintf(stderr, "ERROR: OBJ_create function pointer is NULL!\n");
-        return 0;
-    }
-    
     nid = OBJ_create(SGX_QUOTE_OID, "SGXQuote", "Intel SGX Quote Extension");
     if (nid == NID_undef) {
         fprintf(stderr, "ERROR: OBJ_create failed!\n");
         print_openssl_error("Error creating SGX Quote OID");
         return 0;
     }
-    
-    
+
+
     /* Get the number of extensions */
-    if (X509_get_ext_count == NULL) {
-        fprintf(stderr, "ERROR: X509_get_ext_count function pointer is NULL!\n");
-        return 0;
-    }
-    
     ext_count = X509_get_ext_count(cert);
-    
+
     if (ext_count <= 0) {
         fprintf(stderr, "No extensions found in certificate\n");
         return 0;
     }
-    
+
     /* Look for the SGX quote extension */
-    if (X509_get_ext == NULL) {
-        fprintf(stderr, "ERROR: X509_get_ext function pointer is NULL!\n");
-        return 0;
-    }
-    
     for (i = 0; i < ext_count; i++) {
         ext = X509_get_ext(cert, i);
         if (!ext) {
             continue;
         }
-        
-        
+
+
         /* Check if this is the SGX quote extension */
-        if (X509_EXTENSION_get_object == NULL) {
-            fprintf(stderr, "ERROR: X509_EXTENSION_get_object function pointer is NULL!\n");
-            return 0;
-        }
-        
-        if (OBJ_obj2nid == NULL) {
-            fprintf(stderr, "ERROR: OBJ_obj2nid function pointer is NULL!\n");
-            return 0;
-        }
-        
         ASN1_OBJECT *obj = X509_EXTENSION_get_object(ext);
         int ext_nid = OBJ_obj2nid(obj);
-        
+
         if (ext_nid == nid) {
             /* Get the extension data */
-            if (X509_EXTENSION_get_data == NULL) {
-                fprintf(stderr, "ERROR: X509_EXTENSION_get_data function pointer is NULL!\n");
-                return 0;
-            }
-            
             ext_data = X509_EXTENSION_get_data(ext);
             if (!ext_data) {
                 fprintf(stderr, "SGX quote extension found but data is empty\n");
                 return 0;
             }
-            
-            
+
+
             /* Get the raw data from the extension */
-            if (ASN1_STRING_get0_data == NULL) {
-                fprintf(stderr, "ERROR: ASN1_STRING_get0_data function pointer is NULL!\n");
-                return 0;
-            }
-            
-            if (ASN1_STRING_length == NULL) {
-                fprintf(stderr, "ERROR: ASN1_STRING_length function pointer is NULL!\n");
-                return 0;
-            }
             
             const unsigned char *raw_data = ASN1_STRING_get0_data(ext_data);
             int raw_len = ASN1_STRING_length(ext_data);
-            
+
             /* Check if we have at least enough data for the header */
             if (raw_len < sizeof(sgx_quote_header_t)) {
                 fprintf(stderr, "SGX quote data too short for header: %d bytes\n", raw_len);
                 return 0;
             }
-            
+
             /* Parse the header */
             sgx_quote_header_t *header = (sgx_quote_header_t *)raw_data;
             uint32_t header_version = extract_uint32((uint8_t*)&header->version);
             uint32_t header_type = extract_uint32((uint8_t*)&header->type);
             uint32_t quote_size = extract_uint32((uint8_t*)&header->size);
             uint32_t reserved = extract_uint32((uint8_t*)&header->reserved);
-            
+
             /* Process header information */
-            
+
             /* Header information parsed (not printed in the updated Unix-like version) */
-            
+
             /* Verify the size makes sense */
             if (quote_size > raw_len - sizeof(sgx_quote_header_t)) {
-                fprintf(stderr, "SGX quote size in header (%u) exceeds available data (%d)\n", 
+                fprintf(stderr, "SGX quote size in header (%u) exceeds available data (%d)\n",
                         quote_size, raw_len - (int)sizeof(sgx_quote_header_t));
                 quote_size = raw_len - sizeof(sgx_quote_header_t);
                 /* Adjusted quote size */
             }
-            
+
             /* Allocate memory for the quote data (excluding the header) */
             quote_buffer->length = quote_size;
             if (quote_size > 0) {
@@ -133,7 +94,7 @@ int extract_sgx_quote(void *cert_ptr, sgx_quote_buffer_t *quote_buffer) {
                     fprintf(stderr, "Memory allocation failed\n");
                     return 0;
                 }
-                
+
                 /* Copy just the quote data (after the header) */
                 memcpy(quote_buffer->data, raw_data + sizeof(sgx_quote_header_t), quote_buffer->length);
             } else {
