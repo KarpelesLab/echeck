@@ -47,13 +47,15 @@ void print_openssl_error(const char *msg) {
         fprintf(stderr, "Cannot print OpenSSL error: OpenSSL not initialized\n");
         return;
     }
-    
+
     /* We will let all errors print normally, as the error handling code
      * in the specific functions will decide which errors to suppress */
-    
+
     /* Print the error normally */
-    fprintf(stderr, "%s: ", msg);
+    fprintf(stderr, "%s: OpenSSL error occurred\n", msg);
+#ifndef OPENSSL_RUNTIME_LINK
     ERR_print_errors_fp(stderr);
+#endif
 }
 
 /* Helper to extract uint32 values from unaligned data */

@@ -184,17 +184,56 @@ int init_openssl_runtime(void) {
 #if defined(_WIN32) || defined(_WIN64)
     /* Windows implementation using LoadLibrary */
     
-    /* Try to load libcrypto */
-    libcrypto_handle = LoadLibraryA(LIBCRYPTO_NAME);
+    /* Define platform-specific search paths for Windows */
+    const char* crypto_paths[] = {
+        LIBCRYPTO_NAME,  /* Try the default name first */
+        "C:\\Program Files\\OpenSSL-Win64\\bin\\libcrypto-3-x64.dll",
+        "C:\\Program Files\\OpenSSL\\bin\\libcrypto-3-x64.dll",
+        "C:\\OpenSSL-Win64\\bin\\libcrypto-3-x64.dll",
+        "C:\\OpenSSL\\bin\\libcrypto-3-x64.dll",
+        "libcrypto-3.dll", /* Try for other named version too */
+        NULL
+    };
+
+    const char* ssl_paths[] = {
+        LIBSSL_NAME,  /* Try the default name first */
+        "C:\\Program Files\\OpenSSL-Win64\\bin\\libssl-3-x64.dll",
+        "C:\\Program Files\\OpenSSL\\bin\\libssl-3-x64.dll",
+        "C:\\OpenSSL-Win64\\bin\\libssl-3-x64.dll",
+        "C:\\OpenSSL\\bin\\libssl-3-x64.dll",
+        "libssl-3.dll", /* Try for other named version too */
+        NULL
+    };
+
+    /* Try to load libcrypto from various paths */
+    for (int i = 0; crypto_paths[i] != NULL; i++) {
+        libcrypto_handle = LoadLibraryA(crypto_paths[i]);
+        if (libcrypto_handle) {
+            if (i > 0) {
+                fprintf(stderr, "Successfully loaded libcrypto from %s\n", crypto_paths[i]);
+            }
+            break;
+        }
+    }
+
     if (!libcrypto_handle) {
-        fprintf(stderr, "Failed to load %s: error code %lu\n", LIBCRYPTO_NAME, GetLastError());
+        fprintf(stderr, "Failed to load libcrypto from any known path: error code %lu\n", GetLastError());
         return 0;
     }
 
-    /* Try to load libssl */
-    libssl_handle = LoadLibraryA(LIBSSL_NAME);
+    /* Try to load libssl from various paths */
+    for (int i = 0; ssl_paths[i] != NULL; i++) {
+        libssl_handle = LoadLibraryA(ssl_paths[i]);
+        if (libssl_handle) {
+            if (i > 0) {
+                fprintf(stderr, "Successfully loaded libssl from %s\n", ssl_paths[i]);
+            }
+            break;
+        }
+    }
+
     if (!libssl_handle) {
-        fprintf(stderr, "Failed to load %s: error code %lu\n", LIBSSL_NAME, GetLastError());
+        fprintf(stderr, "Failed to load libssl from any known path: error code %lu\n", GetLastError());
         FreeLibrary(libcrypto_handle);
         libcrypto_handle = NULL;
         return 0;
@@ -206,17 +245,76 @@ int init_openssl_runtime(void) {
     /* Clear any previous errors */
     dlerror();
 
-    /* Try to load libcrypto */
-    libcrypto_handle = dlopen(LIBCRYPTO_NAME, RTLD_LAZY);
+    /* Define platform-specific search paths */
+    const char* crypto_paths[] = {
+        LIBCRYPTO_NAME,  /* Try the basic name first */
+#if defined(__APPLE__)
+        "/opt/homebrew/opt/openssl@3/lib/libcrypto.3.dylib",
+        "/usr/local/opt/openssl@3/lib/libcrypto.3.dylib",
+        "/opt/homebrew/lib/libcrypto.3.dylib",
+        "/usr/local/lib/libcrypto.3.dylib",
+#elif defined(__linux__)
+        "/usr/lib/libcrypto.so.3",
+        "/usr/lib64/libcrypto.so.3",
+        "/usr/local/lib/libcrypto.so.3",
+        "/lib/libcrypto.so.3",
+        "/lib64/libcrypto.so.3",
+#endif
+        NULL
+    };
+
+    const char* ssl_paths[] = {
+        LIBSSL_NAME,  /* Try the basic name first */
+#if defined(__APPLE__)
+        "/opt/homebrew/opt/openssl@3/lib/libssl.3.dylib",
+        "/usr/local/opt/openssl@3/lib/libssl.3.dylib",
+        "/opt/homebrew/lib/libssl.3.dylib",
+        "/usr/local/lib/libssl.3.dylib",
+#elif defined(__linux__)
+        "/usr/lib/libssl.so.3",
+        "/usr/lib64/libssl.so.3",
+        "/usr/local/lib/libssl.so.3",
+        "/lib/libssl.so.3",
+        "/lib64/libssl.so.3",
+#endif
+        NULL
+    };
+
+    /* Try to load libcrypto from various paths */
+    for (int i = 0; crypto_paths[i] != NULL; i++) {
+        /* Clear any previous errors */
+        dlerror();
+
+        libcrypto_handle = dlopen(crypto_paths[i], RTLD_LAZY);
+        if (libcrypto_handle) {
+            if (i > 0) {
+                fprintf(stderr, "Successfully loaded libcrypto from %s\n", crypto_paths[i]);
+            }
+            break;
+        }
+    }
+
     if (!libcrypto_handle) {
-        fprintf(stderr, "Failed to load %s: %s\n", LIBCRYPTO_NAME, dlerror());
+        fprintf(stderr, "Failed to load libcrypto from any known path\n");
         return 0;
     }
 
-    /* Try to load libssl */
-    libssl_handle = dlopen(LIBSSL_NAME, RTLD_LAZY);
+    /* Try to load libssl from various paths */
+    for (int i = 0; ssl_paths[i] != NULL; i++) {
+        /* Clear any previous errors */
+        dlerror();
+
+        libssl_handle = dlopen(ssl_paths[i], RTLD_LAZY);
+        if (libssl_handle) {
+            if (i > 0) {
+                fprintf(stderr, "Successfully loaded libssl from %s\n", ssl_paths[i]);
+            }
+            break;
+        }
+    }
+
     if (!libssl_handle) {
-        fprintf(stderr, "Failed to load %s: %s\n", LIBSSL_NAME, dlerror());
+        fprintf(stderr, "Failed to load libssl from any known path\n");
         dlclose(libcrypto_handle);
         libcrypto_handle = NULL;
         return 0;
