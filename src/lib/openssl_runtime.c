@@ -154,16 +154,16 @@ static void *libcrypto_handle = NULL;
     #define LIBSSL_NAME "libssl.3.dylib"
     #define LIBCRYPTO_NAME "libcrypto.3.dylib"
 #elif defined(_WIN32) || defined(_WIN64)
-    /* On Windows, use architecture-specific libraries */
+    /* On Windows, try both generic and architecture-specific libraries */
     #if defined(_WIN64)
         #if defined(_M_ARM64) || defined(__aarch64__)
             /* ARM64 architecture */
-            #define LIBSSL_NAME "libssl-3-arm64.dll"
-            #define LIBCRYPTO_NAME "libcrypto-3-arm64.dll"
+            #define LIBSSL_NAME "libssl-3.dll"
+            #define LIBCRYPTO_NAME "libcrypto-3.dll"
         #else
             /* x64 architecture (default for 64-bit) */
-            #define LIBSSL_NAME "libssl-3-x64.dll"
-            #define LIBCRYPTO_NAME "libcrypto-3-x64.dll"
+            #define LIBSSL_NAME "libssl-3.dll"
+            #define LIBCRYPTO_NAME "libcrypto-3.dll"
         #endif
     #else
         /* 32-bit x86 architecture */

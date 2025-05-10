@@ -17,6 +17,7 @@
 #include <openssl/sha.h>
 #include <openssl/evp.h>
 #include <openssl/ecdsa.h>
+#include <openssl/err.h>
 #endif
 
 /* Global flags for controlling output */

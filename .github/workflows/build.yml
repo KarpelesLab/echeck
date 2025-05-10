@@ -149,9 +149,45 @@ jobs:
     - name: Install OpenSSL
       shell: pwsh
       run: |
+        # Install OpenSSL using Chocolatey
+        Write-Host "Installing OpenSSL using Chocolatey..."
         choco install openssl
 
-        # Check both possible installation paths
+        # Add diagnostic output to see what's installed and where
+        Write-Host "Checking for OpenSSL installation directories..."
+        # Check all possible OpenSSL installation locations
+        $possiblePaths = @(
+            "C:/Program Files/OpenSSL",
+            "C:/Program Files/OpenSSL-Win64",
+            "C:/OpenSSL",
+            "C:/OpenSSL-Win64"
+        )
+
+        foreach ($path in $possiblePaths) {
+            if (Test-Path $path) {
+                Write-Host "Found OpenSSL at: $path"
+                Get-ChildItem -Path "$path" -Directory | ForEach-Object { Write-Host "  -> $($_.FullName)" }
+            } else {
+                Write-Host "Not found: $path"
+            }
+        }
+
+        # Try to determine the exact OpenSSL version installed
+        Write-Host "Checking OpenSSL executables..."
+        $openssl = Get-Command openssl -ErrorAction SilentlyContinue
+        if ($openssl) {
+            Write-Host "OpenSSL executable found at: $($openssl.Source)"
+            & openssl version
+        } else {
+            Write-Host "OpenSSL executable not found in PATH, trying known locations..."
+            $opensslExes = Get-ChildItem -Path "C:/Program Files" -Recurse -Filter "openssl.exe" -ErrorAction SilentlyContinue
+            foreach ($exe in $opensslExes) {
+                Write-Host "Found: $($exe.FullName)"
+                & $exe.FullName version
+            }
+        }
+
+        # Determine the correct OpenSSL path
         if (Test-Path "C:/Program Files/OpenSSL") {
           $opensslPath = "C:/Program Files/OpenSSL"
         } elseif (Test-Path "C:/Program Files/OpenSSL-Win64") {
@@ -166,8 +202,20 @@ jobs:
 
         Write-Host "Using OpenSSL installation at: $opensslPath"
 
-        # Verify paths to ensure they exist
-        Get-ChildItem -Path "$opensslPath" -Recurse -Include *.lib | Select-Object -First 10 | ForEach-Object { $_.FullName }
+        # List all directories in the OpenSSL installation
+        Write-Host "OpenSSL directory structure:"
+        Get-ChildItem -Path "$opensslPath" -Directory | ForEach-Object {
+            Write-Host "Directory: $($_.FullName)"
+            Get-ChildItem -Path $_.FullName | Select-Object -First 5 | ForEach-Object { Write-Host "  - $($_.Name)" }
+        }
+
+        # Verify library files exist
+        Write-Host "OpenSSL libraries:"
+        Get-ChildItem -Path "$opensslPath" -Recurse -Include *.lib | ForEach-Object { Write-Host "Lib: $($_.FullName)" }
+
+        # Check for DLL files
+        Write-Host "OpenSSL DLLs:"
+        Get-ChildItem -Path "$opensslPath" -Recurse -Include *.dll | ForEach-Object { Write-Host "DLL: $($_.FullName)" }
 
     - name: Configure CMake
       shell: pwsh
