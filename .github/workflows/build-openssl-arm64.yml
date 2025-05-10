@@ -1,0 +1,94 @@
+name: Build OpenSSL for Windows ARM64
+
+on:
+  workflow_dispatch:  # Manual trigger
+  # Uncomment to run on schedule if needed
+  # schedule:
+  #  - cron: '0 0 1 * *'  # Monthly (first day of month at midnight UTC)
+
+jobs:
+  build-openssl-arm64:
+    name: Build OpenSSL 3.5.0 for Windows ARM64
+    runs-on: windows-11-arm
+    
+    env:
+      OPENSSL_VERSION: 3.5.0
+      INSTALL_DIR: ${{ github.workspace }}/openssl-install
+      
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install LLVM and dependencies
+      shell: pwsh
+      run: |
+        # Install LLVM
+        choco install llvm -y
+        
+        # Install Perl and NASM (required for OpenSSL build)
+        choco install strawberryperl -y
+        choco install nasm -y
+        
+        # Add to PATH
+        echo "$env:ProgramFiles\LLVM\bin" >> $env:GITHUB_PATH
+        echo "C:\Strawberry\perl\bin" >> $env:GITHUB_PATH
+        echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
+    
+    - name: Download OpenSSL source
+      shell: pwsh
+      run: |
+        $opensslFile = "openssl-$env:OPENSSL_VERSION.tar.gz"
+        $opensslUrl = "https://github.com/openssl/openssl/releases/download/openssl-$env:OPENSSL_VERSION/$opensslFile"
+        
+        Write-Host "Downloading OpenSSL $env:OPENSSL_VERSION from $opensslUrl"
+        Invoke-WebRequest -Uri $opensslUrl -OutFile $opensslFile
+        
+        Write-Host "Extracting OpenSSL source"
+        tar -xzf $opensslFile
+    
+    - name: Configure and build OpenSSL
+      shell: pwsh
+      run: |
+        cd "openssl-$env:OPENSSL_VERSION"
+        
+        # Create install directory
+        New-Item -ItemType Directory -Force -Path $env:INSTALL_DIR
+        
+        # Set up environment for LLVM/Clang
+        $env:CC = "clang"
+        $env:CXX = "clang++"
+        
+        # Configure OpenSSL for ARM64
+        # Using mingw64 configuration with target=arm64
+        Write-Host "Configuring OpenSSL for Windows ARM64..."
+        perl Configure mingw64 --prefix="$env:INSTALL_DIR" --openssldir="$env:INSTALL_DIR" --cross-compile-prefix=llvm- --target=arm64-w64-mingw32 PROCESSOR=ARM64
+        
+        # Build OpenSSL
+        Write-Host "Building OpenSSL..."
+        nmake
+        
+        # Install OpenSSL
+        Write-Host "Installing OpenSSL..."
+        nmake install
+        
+        # Copy DLLs to bin directory for easier access
+        Copy-Item "$env:INSTALL_DIR\lib\libcrypto*.dll" -Destination "$env:INSTALL_DIR\bin\"
+        Copy-Item "$env:INSTALL_DIR\lib\libssl*.dll" -Destination "$env:INSTALL_DIR\bin\"
+    
+    - name: Create OpenSSL package
+      shell: pwsh
+      run: |
+        # Create a zip archive of the installation
+        $packageDir = "openssl-$env:OPENSSL_VERSION-windows-arm64"
+        New-Item -ItemType Directory -Force -Path $packageDir
+        
+        # Copy the installed files
+        Copy-Item -Path "$env:INSTALL_DIR\*" -Destination $packageDir -Recurse
+        
+        # Create archive
+        Compress-Archive -Path $packageDir -DestinationPath "$packageDir.zip"
+    
+    - name: Upload OpenSSL package
+      uses: actions/upload-artifact@v4
+      with:
+        name: openssl-${{ env.OPENSSL_VERSION }}-windows-arm64
+        path: openssl-${{ env.OPENSSL_VERSION }}-windows-arm64.zip

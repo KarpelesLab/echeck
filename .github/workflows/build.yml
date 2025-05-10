@@ -222,24 +222,30 @@ jobs:
       fail-fast: false
       matrix:
         link-type: [Static, Runtime]
-    
+
     steps:
     - uses: actions/checkout@v4
 
     - name: Install OpenSSL
       shell: pwsh
       run: |
-        # For ARM64, we'll use runtime-only mode for now
-        # The headers are still needed for both static and runtime modes
+        # For now, we still use x64 headers (compatible) but will use runtime loading
+        # In the future, we'll use custom-built ARM64 OpenSSL from our other workflow
         echo "OPENSSL_ROOT_DIR=C:/Program Files/OpenSSL-Win64" >> $env:GITHUB_ENV
         echo "OPENSSL_INCLUDE_DIR=C:/Program Files/OpenSSL-Win64/include" >> $env:GITHUB_ENV
+
+        # TODO: Once we have our ARM64 OpenSSL build, we can use:
+        # - Download the OpenSSL ARM64 artifact
+        # - Set OPENSSL_ROOT_DIR to the extracted location
+        # - Set OPENSSL_CRYPTO_LIBRARY and OPENSSL_SSL_LIBRARY for static builds
 
     - name: Configure CMake
       shell: pwsh
       run: |
         New-Item -ItemType Directory -Force -Path build
         cd build
-        # Always use runtime mode for ARM64 since we don't have ARM64 OpenSSL libraries
+        # For now, always use runtime mode for ARM64
+        # TODO: When we have ARM64 libraries, use matrix.link-type to decide
         cmake -G "Visual Studio 17 2022" -A ARM64 -DOPENSSL_RUNTIME_LINK=ON `
           -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
           -DOPENSSL_INCLUDE_DIR="$env:OPENSSL_INCLUDE_DIR" ..
@@ -261,20 +267,40 @@ jobs:
       run: |
         $linkType = "${{ matrix.link-type }}"
         $linkTypeLower = if ($linkType -eq "Runtime") { "runtime" } else { "static" }
-        
+
         # Create artifact directory
         $ARTIFACT_NAME = "echeck-windows-arm64-$(Get-Date -Format 'yyyyMMdd')-$linkTypeLower"
         New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/bin"
         New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/lib"
         New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/include/echeck"
-        
+
         # Copy files
         Copy-Item "build/Release/echeck.exe" -Destination "package/$ARTIFACT_NAME/bin/"
         Copy-Item "build/Release/echeck.lib" -Destination "package/$ARTIFACT_NAME/lib/"
         Copy-Item "include/echeck.h" -Destination "package/$ARTIFACT_NAME/include/echeck/"
         Copy-Item "README.md" -Destination "package/$ARTIFACT_NAME/" -ErrorAction SilentlyContinue
         Copy-Item "LICENSE*" -Destination "package/$ARTIFACT_NAME/" -ErrorAction SilentlyContinue
-        
+
+        # Create OpenSSL DLLs directory for runtime use
+        New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/bin/openssl"
+
+        # Download sample OpenSSL DLLs from program files (x64 ones for now)
+        # TODO: Replace with ARM64 OpenSSL DLLs once we have our custom build
+        Copy-Item "C:/Program Files/OpenSSL-Win64/bin/libcrypto-3-x64.dll" -Destination "package/$ARTIFACT_NAME/bin/openssl/" -ErrorAction SilentlyContinue
+        Copy-Item "C:/Program Files/OpenSSL-Win64/bin/libssl-3-x64.dll" -Destination "package/$ARTIFACT_NAME/bin/openssl/" -ErrorAction SilentlyContinue
+
+        # Add a README for the OpenSSL DLLs
+        Set-Content -Path "package/$ARTIFACT_NAME/bin/openssl/README.txt" -Value @"
+These OpenSSL DLLs are provided for convenience.
+When running in runtime mode, place the appropriate OpenSSL DLLs for your architecture in the same directory as the echeck.exe executable.
+
+For ARM64 Windows:
+- libcrypto-3-arm64.dll
+- libssl-3-arm64.dll
+
+You can download the latest OpenSSL for Windows from https://www.openssl.org/
+"@
+
         # Create zip archive
         Compress-Archive -Path "package/$ARTIFACT_NAME" -DestinationPath "package/$ARTIFACT_NAME.zip"
 
