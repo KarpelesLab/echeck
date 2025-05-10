@@ -31,48 +31,89 @@ jobs:
     - name: Install OpenSSL (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        brew install openssl@3
+        brew install openssl@3 || true
+        echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
+        echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@3)/include" >> $GITHUB_ENV
+
+    - name: Setup vcpkg (Windows)
+      if: matrix.os == 'windows-latest'
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: '36d771f9f34c717e5eaf3614b5feae2119b0655a'
 
     - name: Install OpenSSL (Windows)
       if: matrix.os == 'windows-latest'
       run: |
         vcpkg install openssl:x64-windows
         echo "OPENSSL_ROOT_DIR=$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows" >> $env:GITHUB_ENV
+        echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
 
-    - name: Configure CMake (Ubuntu/macOS with runtime link)
-      if: (matrix.os == 'ubuntu-22.04' || matrix.os == 'macos-latest') && matrix.runtime-link
+    - name: Configure CMake (Ubuntu with runtime link)
+      if: matrix.os == 'ubuntu-22.04' && matrix.runtime-link
       run: |
         mkdir -p build
         cd build
         cmake -DOPENSSL_RUNTIME_LINK=ON ..
 
-    - name: Configure CMake (Ubuntu/macOS without runtime link)
-      if: (matrix.os == 'ubuntu-22.04' || matrix.os == 'macos-latest') && !matrix.runtime-link
+    - name: Configure CMake (macOS with runtime link)
+      if: matrix.os == 'macos-latest' && matrix.runtime-link
+      run: |
+        mkdir -p build
+        cd build
+        cmake -DOPENSSL_RUNTIME_LINK=ON -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
+
+    - name: Configure CMake (Ubuntu without runtime link)
+      if: matrix.os == 'ubuntu-22.04' && !matrix.runtime-link
       run: |
         mkdir -p build
         cd build
         cmake ..
 
-    - name: Configure CMake (Windows with runtime link)
-      if: matrix.os == 'windows-latest' && matrix.runtime-link
+    - name: Configure CMake (macOS without runtime link)
+      if: matrix.os == 'macos-latest' && !matrix.runtime-link
       run: |
         mkdir -p build
         cd build
-        cmake -DOPENSSL_RUNTIME_LINK=ON -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" ..
+        cmake -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
+
+    - name: Configure CMake (Windows with runtime link)
+      if: matrix.os == 'windows-latest' && matrix.runtime-link
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Force -Path build
+        cd build
+        cmake -G "Visual Studio 17 2022" -A x64 -DOPENSSL_RUNTIME_LINK=ON -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ..
 
     - name: Configure CMake (Windows without runtime link)
       if: matrix.os == 'windows-latest' && !matrix.runtime-link
+      shell: pwsh
       run: |
-        mkdir -p build
+        New-Item -ItemType Directory -Force -Path build
         cd build
-        cmake -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" ..
+        cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ..
 
-    - name: Build
+    - name: Build (Unix)
+      if: matrix.os == 'ubuntu-22.04' || matrix.os == 'macos-latest'
+      run: |
+        cd build
+        make VERBOSE=1
+
+    - name: Build (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: pwsh
       run: |
         cd build
         cmake --build . --config Release
 
-    - name: Run tests
+    - name: Run tests (Unix)
+      if: matrix.os == 'ubuntu-22.04' || matrix.os == 'macos-latest'
+      run: |
+        cd build
+        ctest --output-on-failure
+
+    - name: Run tests (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: pwsh
       run: |
         cd build
         ctest -C Release --output-on-failure
