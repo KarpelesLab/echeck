@@ -117,8 +117,14 @@ extern X509* (*PEM_read_bio_X509)(BIO *bp, X509 **x, pem_password_cb *cb, void *
 
 /* X509 Functions */
 extern void (*X509_free)(X509 *a);
+#if defined(_WIN32) || defined(_WIN64)
+/* Windows has trouble with certain function pointer declarations */
+extern void* (*X509_get_subject_name)(const X509 *x); /* Returns X509_NAME* */
+extern char* (*X509_NAME_oneline)(void *a, char *buf, int size); /* First arg is X509_NAME* */
+#else
 extern X509_NAME* (*X509_get_subject_name)(const X509 *x);
 extern char* (*X509_NAME_oneline)(const X509_NAME *a, char *buf, int size);
+#endif
 extern EVP_PKEY* (*X509_get_pubkey)(X509 *x);
 extern int (*X509_get_ext_count)(const X509 *x);
 extern X509_EXTENSION* (*X509_get_ext)(const X509 *x, int loc);
