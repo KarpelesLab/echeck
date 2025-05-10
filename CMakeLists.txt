@@ -59,6 +59,10 @@ set_target_properties(libecheck PROPERTIES
 
 # Define ECHECK_SHARED_LIBRARY when building shared library
 target_compile_definitions(libecheck PRIVATE ECHECK_SHARED_LIBRARY)
+# Also define ECHECK_SHARED_LIBRARY for the static library on Windows to prevent dllimport errors
+if(WIN32)
+    target_compile_definitions(libecheck_static PRIVATE ECHECK_SHARED_LIBRARY)
+endif()
 
 # Include directories for static library
 target_include_directories(libecheck_static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
