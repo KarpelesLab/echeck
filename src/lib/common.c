@@ -17,6 +17,11 @@ void set_verbose_mode(int verbose) {
     global_verbose_flag = verbose ? 1 : 0;
 }
 
+/* Check if verbose mode is enabled */
+int is_verbose_mode(void) {
+    return global_verbose_flag;
+}
+
 /* Static variable to track initialization status */
 static int openssl_initialized = 0;
 
@@ -83,7 +88,7 @@ uint16_t extract_uint16(const uint8_t *data) {
 
 /* Helper function to print bytes in hex format */
 void print_hex(const char *label, const uint8_t *data, size_t len) {
-    if (global_verbose_flag) {
+    if (is_verbose_mode()) {
         fprintf(stderr, "%s: ", label);
         for (size_t i = 0; i < len; i++) {
             fprintf(stderr, "%02x", data[i]);

@@ -56,5 +56,7 @@ void print_openssl_error(const char *msg);
 /* Utility functions from common.c */
 uint32_t extract_uint32(const uint8_t *data);
 uint16_t extract_uint16(const uint8_t *data);
+void print_hex(const char *label, const uint8_t *data, size_t len);
+int is_verbose_mode(void);
 
 #endif /* ECHECK_INTERNAL_H */

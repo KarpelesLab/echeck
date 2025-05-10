@@ -6,10 +6,10 @@
 #include "echeck_internal.h"
 /* OpenSSL headers are accessed through openssl_runtime.h included in common.h */
 
-/* Compute a hash of the quote for verification 
+/* Compute a hash of the quote for verification
  * This function only outputs when verbose mode is active */
 void dump_buffer(const char *name, const unsigned char *data, size_t len) {
-    if (global_verbose_flag) {
+    if (is_verbose_mode()) {
         fprintf(stderr, "%s (%zu bytes): ", name, len);
         for (size_t i = 0; i < len && i < 32; i++) {
             fprintf(stderr, "%02x", data[i]);
@@ -141,7 +141,7 @@ int extract_attestation_key(const sgx_quote_t *quote, EVP_PKEY **out_key) {
     EC_KEY_free(ec_key);
     EVP_PKEY_free(params);
     
-    if (global_verbose_flag) {
+    if (is_verbose_mode()) {
         fprintf(stderr, "Successfully extracted attestation public key\n");
     }
 
@@ -168,7 +168,7 @@ int extract_ecdsa_signature(const sgx_quote_t *quote,
     const uint8_t *sig_raw = sig_data->sig;
     
     /* Print signature components for debugging */
-    if (global_verbose_flag) {
+    if (is_verbose_mode()) {
         fprintf(stderr, "[ECDSA Signature Components]\n");
         fprintf(stderr, "R: ");
         for (int i = 0; i < 32; i++) {
@@ -176,8 +176,8 @@ int extract_ecdsa_signature(const sgx_quote_t *quote,
         }
         fprintf(stderr, "\n");
     }
-    
-    if (global_verbose_flag) {
+
+    if (is_verbose_mode()) {
         fprintf(stderr, "S: ");
         for (int i = 0; i < 32; i++) {
             fprintf(stderr, "%02x", sig_raw[i + 32]);
