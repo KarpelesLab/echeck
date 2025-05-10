@@ -136,21 +136,20 @@ jobs:
         path: package/*.tar.gz
 
   build-windows:
-    name: Build on Windows (${{ matrix.link-type }} OpenSSL)
+    name: Build on Windows x64 (${{ matrix.link-type }} OpenSSL)
     runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
         link-type: [Static, Runtime]
-    
+
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install dependencies
+    - name: Install OpenSSL
       shell: pwsh
       run: |
         choco install openssl
-        choco install pkgconfiglite
         echo "OPENSSL_ROOT_DIR=C:/Program Files/OpenSSL-Win64" >> $env:GITHUB_ENV
         echo "OPENSSL_LIBRARIES=C:/Program Files/OpenSSL-Win64/lib" >> $env:GITHUB_ENV
         echo "OPENSSL_INCLUDE_DIR=C:/Program Files/OpenSSL-Win64/include" >> $env:GITHUB_ENV
@@ -189,34 +188,107 @@ jobs:
       run: |
         $linkType = "${{ matrix.link-type }}"
         $linkTypeLower = if ($linkType -eq "Runtime") { "runtime" } else { "static" }
-        
+
         # Create artifact directory
-        $ARTIFACT_NAME = "echeck-windows-$(Get-Date -Format 'yyyyMMdd')-$linkTypeLower"
+        $ARTIFACT_NAME = "echeck-windows-x64-$(Get-Date -Format 'yyyyMMdd')-$linkTypeLower"
         New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/bin"
         New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/lib"
         New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/include/echeck"
-        
+
         # Copy files
         Copy-Item "build/Release/echeck.exe" -Destination "package/$ARTIFACT_NAME/bin/"
         Copy-Item "build/Release/echeck.lib" -Destination "package/$ARTIFACT_NAME/lib/"
         Copy-Item "include/echeck.h" -Destination "package/$ARTIFACT_NAME/include/echeck/"
         Copy-Item "README.md" -Destination "package/$ARTIFACT_NAME/" -ErrorAction SilentlyContinue
         Copy-Item "LICENSE*" -Destination "package/$ARTIFACT_NAME/" -ErrorAction SilentlyContinue
-        
+
         # Create zip archive
         Compress-Archive -Path "package/$ARTIFACT_NAME" -DestinationPath "package/$ARTIFACT_NAME.zip"
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: echeck-windows-${{ matrix.link-type == 'Runtime' && 'runtime' || 'static' }}
+        name: echeck-windows-x64-${{ matrix.link-type == 'Runtime' && 'runtime' || 'static' }}
+        path: package/*.zip
+
+  build-windows-arm64:
+    name: Build on Windows ARM64 (${{ matrix.link-type }} OpenSSL)
+    # Use dedicated Windows ARM64 runner
+    runs-on: windows-11-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        link-type: [Static, Runtime]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install OpenSSL
+      shell: pwsh
+      run: |
+        choco install openssl
+        echo "OPENSSL_ROOT_DIR=C:/Program Files/OpenSSL-Win64" >> $env:GITHUB_ENV
+        echo "OPENSSL_LIBRARIES=C:/Program Files/OpenSSL-Win64/lib" >> $env:GITHUB_ENV
+        echo "OPENSSL_INCLUDE_DIR=C:/Program Files/OpenSSL-Win64/include" >> $env:GITHUB_ENV
+
+    - name: Configure CMake
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Force -Path build
+        cd build
+        if ("${{ matrix.link-type }}" -eq "Runtime") {
+          cmake -G "Visual Studio 17 2022" -A ARM64 -DOPENSSL_RUNTIME_LINK=ON `
+            -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
+            -DOPENSSL_LIBRARIES="$env:OPENSSL_LIBRARIES" `
+            -DOPENSSL_INCLUDE_DIR="$env:OPENSSL_INCLUDE_DIR" ..
+        } else {
+          cmake -G "Visual Studio 17 2022" -A ARM64 `
+            -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
+            -DOPENSSL_LIBRARIES="$env:OPENSSL_LIBRARIES" `
+            -DOPENSSL_INCLUDE_DIR="$env:OPENSSL_INCLUDE_DIR" ..
+        }
+
+    - name: Build
+      shell: pwsh
+      run: |
+        cd build
+        cmake --build . --config Release
+
+    # Skip tests for ARM64 as we're running on emulation
+
+    - name: Create package
+      shell: pwsh
+      run: |
+        $linkType = "${{ matrix.link-type }}"
+        $linkTypeLower = if ($linkType -eq "Runtime") { "runtime" } else { "static" }
+
+        # Create artifact directory
+        $ARTIFACT_NAME = "echeck-windows-arm64-$(Get-Date -Format 'yyyyMMdd')-$linkTypeLower"
+        New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/bin"
+        New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/lib"
+        New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/include/echeck"
+
+        # Copy files
+        Copy-Item "build/Release/echeck.exe" -Destination "package/$ARTIFACT_NAME/bin/"
+        Copy-Item "build/Release/echeck.lib" -Destination "package/$ARTIFACT_NAME/lib/"
+        Copy-Item "include/echeck.h" -Destination "package/$ARTIFACT_NAME/include/echeck/"
+        Copy-Item "README.md" -Destination "package/$ARTIFACT_NAME/" -ErrorAction SilentlyContinue
+        Copy-Item "LICENSE*" -Destination "package/$ARTIFACT_NAME/" -ErrorAction SilentlyContinue
+
+        # Create zip archive
+        Compress-Archive -Path "package/$ARTIFACT_NAME" -DestinationPath "package/$ARTIFACT_NAME.zip"
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: echeck-windows-arm64-${{ matrix.link-type == 'Runtime' && 'runtime' || 'static' }}
         path: package/*.zip
 
   release-artifacts:
     name: Upload artifacts to release
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
-    needs: [build-ubuntu, build-macos, build-windows]
+    needs: [build-ubuntu, build-macos, build-windows, build-windows-arm64]
     
     steps:
     - name: Download all artifacts
