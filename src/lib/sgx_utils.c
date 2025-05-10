@@ -19,11 +19,16 @@ void dump_buffer(const char *name, const unsigned char *data, size_t len) {
 }
 
 /* Extract the attestation key from the quote signature data */
-EVP_PKEY *extract_attestation_key(const sgx_quote_t *quote) {
+int extract_attestation_key(const sgx_quote_t *quote, EVP_PKEY **out_key) {
     /* First, ensure this is a v3 ECDSA quote */
+    if (!quote || !out_key) {
+        fprintf(stderr, "Invalid parameters for attestation key extraction\n");
+        return 0;
+    }
+
     if (quote->version != 3) {
         fprintf(stderr, "Attestation key extraction only supported for ECDSA Quote v3\n");
-        return NULL;
+        return 0;
     }
     
     /* Get the signature data (located after the quote body) */
@@ -40,21 +45,21 @@ EVP_PKEY *extract_attestation_key(const sgx_quote_t *quote) {
     EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL);
     if (!ctx) {
         print_openssl_error("Failed to create EVP_PKEY_CTX");
-        return NULL;
+        return 0;
     }
     
     /* Initialize key generation parameters */
     if (EVP_PKEY_paramgen_init(ctx) != 1) {
         print_openssl_error("Failed to initialize paramgen");
         EVP_PKEY_CTX_free(ctx);
-        return NULL;
+        return 0;
     }
     
     /* Set curve to P-256 (same as NID_X9_62_prime256v1) */
     if (EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx, NID_X9_62_prime256v1) != 1) {
         print_openssl_error("Failed to set curve parameters");
         EVP_PKEY_CTX_free(ctx);
-        return NULL;
+        return 0;
     }
     
     /* Generate parameters */
@@ -62,7 +67,7 @@ EVP_PKEY *extract_attestation_key(const sgx_quote_t *quote) {
     if (EVP_PKEY_paramgen(ctx, &params) != 1) {
         print_openssl_error("Failed to generate parameters");
         EVP_PKEY_CTX_free(ctx);
-        return NULL;
+        return 0;
     }
     
     /* Create a new EVP_PKEY for the final key */
@@ -71,7 +76,7 @@ EVP_PKEY *extract_attestation_key(const sgx_quote_t *quote) {
         print_openssl_error("Failed to create EVP_PKEY");
         EVP_PKEY_free(params);
         EVP_PKEY_CTX_free(ctx);
-        return NULL;
+        return 0;
     }
     
     /* Clean up the parameter generation context */
@@ -90,7 +95,7 @@ EVP_PKEY *extract_attestation_key(const sgx_quote_t *quote) {
         print_openssl_error("Failed to create temporary EC_KEY");
         EVP_PKEY_free(pkey);
         EVP_PKEY_free(params);
-        return NULL;
+        return 0;
     }
     
     /* Convert the raw X and Y coordinates to BIGNUMs */
@@ -104,7 +109,7 @@ EVP_PKEY *extract_attestation_key(const sgx_quote_t *quote) {
         EC_KEY_free(ec_key);
         EVP_PKEY_free(pkey);
         EVP_PKEY_free(params);
-        return NULL;
+        return 0;
     }
     
     /* Set the public key coordinates */
@@ -115,7 +120,7 @@ EVP_PKEY *extract_attestation_key(const sgx_quote_t *quote) {
         EC_KEY_free(ec_key);
         EVP_PKEY_free(pkey);
         EVP_PKEY_free(params);
-        return NULL;
+        return 0;
     }
     
     /* Set the EC_KEY into the EVP_PKEY */
@@ -126,7 +131,7 @@ EVP_PKEY *extract_attestation_key(const sgx_quote_t *quote) {
         EC_KEY_free(ec_key);
         EVP_PKEY_free(pkey);
         EVP_PKEY_free(params);
-        return NULL;
+        return 0;
     }
     
     /* Clean up */
@@ -138,7 +143,10 @@ EVP_PKEY *extract_attestation_key(const sgx_quote_t *quote) {
     if (global_verbose_flag) {
         fprintf(stderr, "Successfully extracted attestation public key\n");
     }
-    return pkey;
+
+    /* Set the output parameter */
+    *out_key = pkey;
+    return 1;
 }
 
 /* Extract and parse ECDSA signature from quote */

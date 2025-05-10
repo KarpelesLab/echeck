@@ -6,3 +6,5 @@ CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
 Makefile.cmake
+
+**/.claude/settings.local.json

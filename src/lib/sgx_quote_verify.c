@@ -1,21 +1,22 @@
 #include "echeck.h"
 #include "echeck_internal.h"
+#include "sgx_utils.h"
 /* OpenSSL headers are accessed through openssl_runtime.h */
 
 /* Initialize verification result structure */
-static void init_verification_result(sgx_verification_result_t *result) {
+static void init_verification_result(echeck_verification_result_t *result) {
+    result->valid = 0;
+    result->error_message = NULL;
     result->mr_enclave_valid = 0;
     result->mr_signer_valid = 0;
     result->signature_valid = 0;
-    result->version_valid = 0;
+    result->quote_valid = 0;
     result->report_data_matches_cert = 0;
     result->cert_chain_valid = 0;
-    result->attestation_key_valid = 0;
-    result->total_checks = 0;
+    result->checks_performed = 0;
     result->checks_passed = 0;
-    
-    /* Initialize the certificate verification result */
-    init_cert_verification_result(&result->cert_result);
+
+    /* No need to initialize cert_result as it's not in the echeck_verification_result_t structure */
 }
 
 /* Check if MR value is valid (not all zeros) */
@@ -30,156 +31,134 @@ static int is_mr_value_valid(const unsigned char *mr_value, size_t size) {
 
 /* Verify SGX quote */
 int verify_sgx_quote(const unsigned char *quote_data, int quote_len,
-                     sgx_verification_result_t *result) {
-    STACK_OF(X509) *ca_stack = NULL;
+                     echeck_verification_result_t *result) {
     int ret_val = 0;
-    
-    
+
     /* Initialize result structure */
     init_verification_result(result);
-    
-    
+
     /* Basic validation of the quote data */
     /* Calculate minimum size: 48 bytes (header) + 384 bytes (report body) + 4 bytes (signature_len) */
     size_t min_quote_size = 48 + sizeof(sgx_report_body_t) + sizeof(uint32_t);
-    
+
     if (quote_len < min_quote_size) {
-        fprintf(stderr, "SGX quote data too short (%d bytes), minimum required: %zu\n", 
+        fprintf(stderr, "SGX quote data too short (%d bytes), minimum required: %zu\n",
                 quote_len, min_quote_size);
+        result->error_message = "Quote data too short";
         return 0;
     }
-    
-    
-    /* Use built-in CA stack */
-    ca_stack = get_trusted_ca_stack();
-    if (!ca_stack) {
-        fprintf(stderr, "Failed to load built-in CA certificates\n");
-        return 0;
-    }
-    
-    
+
     /* Use the SGX quote structure for proper field access */
     const sgx_quote_t *quote = (const sgx_quote_t *)quote_data;
-    
+
     /* Get signature information */
     uint32_t signature_len = quote->signature_len;
-    
+
     /* Handle cases where signature_len is 0 in the structure */
     if (signature_len == 0 && quote_len > min_quote_size) {
         signature_len = quote_len - min_quote_size;
     }
-    
+
     /* Check if signature length is valid */
     if (signature_len > 0 && quote_len < min_quote_size + signature_len) {
-        fprintf(stderr, "Quote data size (%d) smaller than expected (%zu)\n", 
+        fprintf(stderr, "Quote data size (%d) smaller than expected (%zu)\n",
                 quote_len, min_quote_size + signature_len);
-        if (ca_stack) {
-            if (OPENSSL_sk_pop_free == NULL) {
-                fprintf(stderr, "ERROR: OPENSSL_sk_pop_free function pointer is NULL!\n");
-                /* Fall back to regular free in case of error */
-                sk_X509_free(ca_stack);
-            } else {
-                sk_X509_pop_free(ca_stack, X509_free);
-            }
-        }
+        result->error_message = "Quote data size smaller than expected";
         return 0;
     }
-    
-    /* Quote signature is at quote->signature, but we don't need a local variable for it */
-    
-    /* Verification checks - we perform the checks but don't print output
-     * Output is now handled by the main app according to verbosity settings */
-    
+
+    /* Verification checks - we perform the checks but don't print output */
+
     /* Check 1: Quote version */
-    result->total_checks++;
+    result->checks_performed++;
     if (quote->version == 3 || quote->version == 2 || quote->version == 1) {
-        result->version_valid = 1;
+        result->quote_valid = 1;
         result->checks_passed++;
     }
-    
+
     /* Check 2: MR_ENCLAVE validation */
-    result->total_checks++;
+    result->checks_performed++;
     result->mr_enclave_valid = is_mr_value_valid(quote->report_body.mr_enclave, sizeof(sgx_measurement_t));
     if (result->mr_enclave_valid) {
         result->checks_passed++;
     }
-    
+
     /* Check 3: MR_SIGNER validation */
-    result->total_checks++;
+    result->checks_performed++;
     result->mr_signer_valid = is_mr_value_valid(quote->report_body.mr_signer, sizeof(sgx_measurement_t));
     if (result->mr_signer_valid) {
         result->checks_passed++;
     }
-    
+
     /* Check 4: MR_SIGNER check */
-    result->total_checks++;
-    
+    result->checks_performed++;
+
     /* Convert binary MR_SIGNER to hex string for later use if needed */
     char extracted_mr_signer[97] = {0}; /* 32 bytes * 2 hex chars + null terminator */
     for (int i = 0; i < 32; i++) {
         sprintf(extracted_mr_signer + (i * 2), "%02x", quote->report_body.mr_signer[i]);
     }
-    
+
     /* We've already verified MR_SIGNER is valid (not all zeros) in Check 3 */
     result->checks_passed++;
-    
+
     /* Check 5: MR_ENCLAVE value */
-    result->total_checks++;
-    
+    result->checks_performed++;
+
     /* Convert binary MR_ENCLAVE to hex string for storage in result */
     char extracted_mr_enclave[97] = {0}; /* 32 bytes * 2 hex chars + null terminator */
     for (int i = 0; i < 32; i++) {
         sprintf(extracted_mr_enclave + (i * 2), "%02x", quote->report_body.mr_enclave[i]);
     }
-    
+
     /* We've already verified MR_ENCLAVE is valid (not all zeros) in Check 2 */
     result->checks_passed++;
-    
+
     /* Check 6: Signature length validation */
-    result->total_checks++;
+    result->checks_performed++;
     if (signature_len > 0 && signature_len <= quote_len - min_quote_size) {
         result->checks_passed++;
     }
-    
+
     /* Check 7: Quote version validation (redundant with check 1, but kept for legacy reasons) */
-    result->total_checks++;
+    result->checks_performed++;
     if (quote->version >= 1 && quote->version <= 3) {
         result->checks_passed++;
     }
-    
+
     /* Check 8: Signature verification */
-    result->total_checks++;
-    
+    result->checks_performed++;
+
     /* For ECDSA quotes (v3), verify the signature */
     if (quote->version == 3) {
         /* Compute the quote hash for signature verification */
         unsigned char quote_hash[SHA256_DIGEST_LENGTH];
         unsigned int quote_hash_len = 0;
-        
+
         if (compute_quote_hash_for_sig(quote, quote_hash, &quote_hash_len)) {
             /* Extract the attestation key from the quote */
-            EVP_PKEY *attest_key = extract_attestation_key(quote);
-            
-            if (attest_key) {
+            EVP_PKEY *attest_key = NULL;
+
+            if (extract_attestation_key(quote, &attest_key) && attest_key) {
                 /* Extract the signature components */
                 unsigned char *sig_r = NULL;
                 unsigned char *sig_s = NULL;
                 unsigned int sig_r_len = 0;
                 unsigned int sig_s_len = 0;
-                
+
                 if (extract_ecdsa_signature(quote, &sig_r, &sig_r_len, &sig_s, &sig_s_len)) {
                     /* Verify the signature */
-                    if (verify_quote_signature_raw(quote_hash, quote_hash_len, 
+                    if (verify_quote_signature_raw(quote_hash, quote_hash_len,
                                                 sig_r, sig_r_len, sig_s, sig_s_len, attest_key)) {
                         result->signature_valid = 1;
                         result->checks_passed++;
                     }
-                    
+
                     /* Free the signature components */
                     free(sig_r);
                     free(sig_s);
                 }
-                
+
                 /* Free the attestation key */
                 EVP_PKEY_free(attest_key);
             }
@@ -188,51 +167,16 @@ int verify_sgx_quote(const unsigned char *quote_data, int quote_len,
         /* For other quote versions, just validate structure */
         result->checks_passed++;
     }
-    
+
     /* Determine if verification passed */
-    if (result->checks_passed == result->total_checks) {
+    if (result->checks_passed == result->checks_performed) {
+        result->valid = 1;
         ret_val = 1;
     } else {
+        result->valid = 0;
         ret_val = 0;
     }
-    
-    /* Check 9: Certificate Chain Verification */
-    if (quote->version == 3) {
-        result->total_checks++;
-        
-        /* Extract the PCK certificate chain */
-        if (extract_pck_cert_chain(quote, &result->cert_result)) {
-            /* Verify the PCK certificate chain */
-            if (verify_pck_cert_chain(&result->cert_result, ca_stack)) {
-                result->cert_chain_valid = 1;
-                result->checks_passed++;
-            }
-        }
-    }
-    
-    /* Check 10: Attestation Key Verification */
-    if (quote->version == 3 && result->cert_chain_valid) {
-        result->total_checks++;
-        
-        /* Verify the attestation key */
-        if (verify_attestation_key(quote, &result->cert_result)) {
-            result->attestation_key_valid = 1;
-            result->checks_passed++;
-        }
-    }
-    
-    /* Cleanup */
-    free_cert_verification_result(&result->cert_result);
-    if (ca_stack) {
-        if (OPENSSL_sk_pop_free == NULL) {
-            fprintf(stderr, "ERROR: OPENSSL_sk_pop_free function pointer is NULL!\n");
-            /* Fall back to regular free in case of error */
-            sk_X509_free(ca_stack);
-        } else {
-            sk_X509_pop_free(ca_stack, X509_free);
-        }
-    }
-    
+
     return ret_val;
 }
 
@@ -276,7 +220,7 @@ int verify_quote_signature(const sgx_quote_t *quote, const unsigned char *quote_
     printf("\n");
     
     /* Verify the signature */
-    int result = verify_ecdsa_signature(quote_hash, quote_hash_len, sig_r, 32, sig_s, 32, pubkey);
+    int result = verify_quote_signature_raw(quote_hash, quote_hash_len, sig_r, 32, sig_s, 32, pubkey);
     
     if (result) {
         printf("✅ ECDSA signature verification successful\n");

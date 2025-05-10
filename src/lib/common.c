@@ -53,11 +53,7 @@ void print_openssl_error(const char *msg) {
     
     /* Print the error normally */
     fprintf(stderr, "%s: ", msg);
-    if (ERR_print_errors_fp) {
-        ERR_print_errors_fp(stderr);
-    } else {
-        fprintf(stderr, "Cannot print detailed error: ERR_print_errors_fp function not available\n");
-    }
+    ERR_print_errors_fp(stderr);
 }
 
 /* Helper to extract uint32 values from unaligned data */

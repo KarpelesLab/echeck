@@ -1,8 +1,21 @@
 #include "echeck.h"
 #include "echeck_internal.h"
 #include "echeck_quote.h"
+#include "sgx_quote_parser.h"
+#include "sgx_quote_verify.h"
+#include "sgx_cert_verify.h"
 #include <stdlib.h>
 #include <string.h>
+#include <openssl/sha.h>
+
+/* External functions that we use */
+extern int verify_report_data(const sgx_quote_t *quote, const unsigned char *pubkey_hash, unsigned int pubkey_hash_len);
+extern int verify_sgx_quote(const unsigned char *quote_data, int quote_len, echeck_verification_result_t *result);
+extern STACK_OF(X509)* get_trusted_ca_stack(void);
+extern int extract_pck_cert_chain(const sgx_quote_t *quote, sgx_cert_verification_result_t *result);
+extern int verify_pck_cert_chain_internal(sgx_cert_verification_result_t *result, STACK_OF(X509) *trusted_ca);
+extern int verify_attestation_key_internal(const sgx_quote_t *quote, sgx_cert_verification_result_t *result);
+extern void free_cert_verification_result(sgx_cert_verification_result_t *result);
 
 /**
  * Create a new quote structure from raw data
@@ -122,20 +135,107 @@ ECHECK_API void free_certificate(void *cert) {
     }
 }
 
-ECHECK_API int verify_quote(void *cert, echeck_quote_t *quote, echeck_verification_result_t *result) {
-    /* This is a placeholder function - we'll need to implement the full verification logic later */
-    if (!cert || !quote || !result) {
+ECHECK_API int verify_quote(void *cert_ptr, echeck_quote_t *quote, echeck_verification_result_t *result) {
+    if (!cert_ptr || !quote || !result) {
         return 0;
     }
+
+    /* Cast cert to proper type */
+    X509 *cert = (X509 *)cert_ptr;
 
     /* Initialize the result structure */
     memset(result, 0, sizeof(echeck_verification_result_t));
 
-    /* For now, just validate that the quote data exists */
-    result->valid = 1;
-    result->quote_valid = 1;
-    result->checks_performed = 1;
-    result->checks_passed = 1;
+    /* First, compute the public key hash to verify the report data */
+    unsigned char pubkey_hash[SHA256_DIGEST_LENGTH];
+    unsigned int pubkey_hash_len = 0;
 
-    return 1;
+    /* We'll need to implement a compute_pubkey_hash wrapper that takes void* */
+    EVP_PKEY *pubkey = X509_get_pubkey(cert);
+    if (!pubkey) {
+        result->error_message = "Failed to get public key from certificate";
+        return 0;
+    }
+
+    /* Compute hash of the public key */
+    unsigned char *pubkey_data = NULL;
+    int pubkey_len = i2d_PUBKEY(pubkey, &pubkey_data);
+
+    if (pubkey_len <= 0 || !pubkey_data) {
+        EVP_PKEY_free(pubkey);
+        result->error_message = "Failed to serialize public key";
+        return 0;
+    }
+
+    /* Hash the public key */
+    if (!SHA256(pubkey_data, pubkey_len, pubkey_hash)) {
+        OPENSSL_free(pubkey_data);
+        EVP_PKEY_free(pubkey);
+        result->error_message = "Failed to hash public key";
+        return 0;
+    }
+
+    pubkey_hash_len = SHA256_DIGEST_LENGTH;
+    OPENSSL_free(pubkey_data);
+    EVP_PKEY_free(pubkey);
+
+    /* Verify that the report data matches the certificate's public key hash */
+    if (!verify_report_data(quote->quote, pubkey_hash, pubkey_hash_len)) {
+        result->error_message = "Report data does not match certificate public key hash";
+        return 0;
+    }
+    result->report_data_matches_cert = 1;
+
+    /* Verify the quote itself using the underlying verification function */
+    int verify_result = verify_sgx_quote(quote->data, quote->data_size, result);
+
+    /* Now perform certificate chain verification - very important for security! */
+    if (verify_result) {
+        /* Get trusted CA certificates */
+        STACK_OF(X509) *ca_stack = get_trusted_ca_stack();
+        if (!ca_stack) {
+            result->error_message = "Failed to load trusted CA certificates";
+            result->valid = 0;
+            return 0;
+        }
+
+        /* Initialize certificate verification result structure */
+        sgx_cert_verification_result_t cert_result = {0};
+        int cert_chain_valid = 0;
+        int attest_key_valid = 0;
+
+        /* Extract PCK certificate chain from the quote */
+        if (extract_pck_cert_chain(quote->quote, &cert_result)) {
+            /* Verify the certificate chain against trusted CAs */
+            if (verify_pck_cert_chain_internal(&cert_result, ca_stack)) {
+                cert_chain_valid = 1;
+                result->cert_chain_valid = 1;
+
+                /* Also verify the attestation key */
+                if (verify_attestation_key_internal(quote->quote, &cert_result)) {
+                    attest_key_valid = 1;
+                }
+            } else {
+                result->error_message = "Certificate chain verification failed";
+            }
+
+            /* Free certificate verification resources */
+            free_cert_verification_result(&cert_result);
+        } else {
+            result->error_message = "Failed to extract PCK certificate chain";
+        }
+
+        /* Free CA stack */
+        sk_X509_pop_free(ca_stack, X509_free);
+
+        /* Final validation - both quote and cert chain must be valid */
+        result->valid = verify_result && cert_chain_valid && attest_key_valid;
+        if (!attest_key_valid) {
+            result->error_message = "Attestation key verification failed";
+        }
+    } else {
+        result->valid = 0;
+    }
+
+    return result->valid;
 }

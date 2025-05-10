@@ -3,9 +3,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <openssl/sha.h>
 
 #include "echeck.h"
-#include "echeck_internal.h"
 
 /* Command-line options */
 struct options {
@@ -112,56 +112,52 @@ int main(int argc, char *argv[]) {
     }
     
     /* Load certificate */
-    X509 *cert = load_certificate(opts.cert_file);
+    void *cert = load_certificate(opts.cert_file);
     if (!cert) {
         fprintf(stderr, "Error: Failed to load certificate from %s\n", opts.cert_file);
         return 1;
     }
     
     /* Extract SGX quote */
-    sgx_quote_buffer_t quote_buffer = {0};
-    
-    if (!extract_sgx_quote(cert, &quote_buffer)) {
+    echeck_quote_t *quote_obj = extract_quote(cert);
+
+    if (!quote_obj) {
         fprintf(stderr, "Error: No SGX Quote extension found in certificate\n");
-        X509_free(cert);
+        free_certificate(cert);
         return 1;
     }
 
     if (!opts.quiet) {
         if (opts.verbose) {
-            fprintf(stderr, "SGX Quote extracted: %d bytes\n", quote_buffer.length);
+            fprintf(stderr, "SGX Quote extracted\n");
         }
     }
-    
-    /* Calculate hash of certificate's public key */
-    unsigned char pubkey_hash[SHA256_DIGEST_LENGTH];
-    unsigned int pubkey_hash_len = 0;
-    
-    if (!compute_pubkey_hash(cert, pubkey_hash, &pubkey_hash_len)) {
-        fprintf(stderr, "Error: Failed to compute public key hash\n");
-        free(quote_buffer.data);
-        X509_free(cert);
+
+    /* Get quote info */
+    echeck_quote_info_t quote_info;
+    if (!get_quote_info(quote_obj, &quote_info)) {
+        fprintf(stderr, "Error: Failed to get quote info\n");
+        free_quote(quote_obj);
+        free_certificate(cert);
         return 1;
     }
+
+    /* We don't need direct access to the quote structure anymore */
     
-    /* Get quote structure */
-    const sgx_quote_t *quote = (const sgx_quote_t *)quote_buffer.data;
-    
-    /* Verify report data matches certificate public key hash */
-    if (!verify_report_data(quote, pubkey_hash, pubkey_hash_len)) {
-        fprintf(stderr, "Error: Report data does not match certificate public key hash\n");
-        fprintf(stderr, "The enclave that created this quote did not know this certificate's public key\n");
-        free(quote_buffer.data);
-        X509_free(cert);
+    /* Use the verification API to verify the quote */
+    echeck_verification_result_t verify_result;
+    if (!verify_quote(cert, quote_obj, &verify_result)) {
+        fprintf(stderr, "Error: Quote verification failed\n");
+        if (verify_result.error_message) {
+            fprintf(stderr, "%s\n", verify_result.error_message);
+        }
+        free_quote(quote_obj);
+        free_certificate(cert);
         return 1;
     }
-    
+
     if (opts.verbose && !opts.quiet) {
-        fprintf(stdout, "Certificate public key hash verified: ");
-        for (int i = 0; i < pubkey_hash_len; i++) {
-            fprintf(stdout, "%02x", pubkey_hash[i]);
-        }
-        fprintf(stdout, "\n");
+        fprintf(stdout, "Quote verification successful\n");
     }
 
     /* Verify custom MRENCLAVE if specified */
@@ -169,125 +165,89 @@ int main(int argc, char *argv[]) {
         unsigned char expected_mrenclave[32];
         if (!hex_to_bin(opts.mrenclave, expected_mrenclave, sizeof(expected_mrenclave))) {
             fprintf(stderr, "Error: Invalid MRENCLAVE format (expected 64 hex characters)\n");
-            free(quote_buffer.data);
-            X509_free(cert);
+            free_quote(quote_obj);
+            free_certificate(cert);
             return 1;
         }
-        
-        if (memcmp(quote->report_body.mr_enclave, expected_mrenclave, sizeof(expected_mrenclave)) != 0) {
+
+        if (memcmp(quote_info.mr_enclave, expected_mrenclave, sizeof(expected_mrenclave)) != 0) {
             fprintf(stderr, "Error: MRENCLAVE value does not match expected value\n");
-            free(quote_buffer.data);
-            X509_free(cert);
+            free_quote(quote_obj);
+            free_certificate(cert);
             return 1;
         }
-        
+
         if (opts.verbose && !opts.quiet) {
             fprintf(stdout, "MRENCLAVE verification passed\n");
         }
     }
-    
+
     /* Verify custom MRSIGNER if specified */
     if (opts.mrsigner) {
         unsigned char expected_mrsigner[32];
         if (!hex_to_bin(opts.mrsigner, expected_mrsigner, sizeof(expected_mrsigner))) {
             fprintf(stderr, "Error: Invalid MRSIGNER format (expected 64 hex characters)\n");
-            free(quote_buffer.data);
-            X509_free(cert);
+            free_quote(quote_obj);
+            free_certificate(cert);
             return 1;
         }
-        
-        if (memcmp(quote->report_body.mr_signer, expected_mrsigner, sizeof(expected_mrsigner)) != 0) {
+
+        if (memcmp(quote_info.mr_signer, expected_mrsigner, sizeof(expected_mrsigner)) != 0) {
             fprintf(stderr, "Error: MRSIGNER value does not match expected value\n");
-            free(quote_buffer.data);
-            X509_free(cert);
+            free_quote(quote_obj);
+            free_certificate(cert);
             return 1;
         }
-        
+
         if (opts.verbose && !opts.quiet) {
             fprintf(stdout, "MRSIGNER verification passed\n");
         }
     }
     
-    /* Verify the SGX quote */
-    sgx_verification_result_t result;
-    
-    if (!verify_sgx_quote(quote_buffer.data, quote_buffer.length, &result)) {
-        fprintf(stderr, "Error: SGX quote verification failed\n");
-        free(quote_buffer.data);
-        X509_free(cert);
-        return 1;
-    }
-    
     /* Print verification results based on output mode */
     if (opts.raw) {
         /* Raw output format for machine readability */
-        fprintf(stdout, "mrenclave=%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x\n",
-            quote->report_body.mr_enclave[0], quote->report_body.mr_enclave[1],
-            quote->report_body.mr_enclave[2], quote->report_body.mr_enclave[3],
-            quote->report_body.mr_enclave[4], quote->report_body.mr_enclave[5],
-            quote->report_body.mr_enclave[6], quote->report_body.mr_enclave[7],
-            quote->report_body.mr_enclave[8], quote->report_body.mr_enclave[9],
-            quote->report_body.mr_enclave[10], quote->report_body.mr_enclave[11],
-            quote->report_body.mr_enclave[12], quote->report_body.mr_enclave[13],
-            quote->report_body.mr_enclave[14], quote->report_body.mr_enclave[15],
-            quote->report_body.mr_enclave[16], quote->report_body.mr_enclave[17],
-            quote->report_body.mr_enclave[18], quote->report_body.mr_enclave[19],
-            quote->report_body.mr_enclave[20], quote->report_body.mr_enclave[21],
-            quote->report_body.mr_enclave[22], quote->report_body.mr_enclave[23],
-            quote->report_body.mr_enclave[24], quote->report_body.mr_enclave[25],
-            quote->report_body.mr_enclave[26], quote->report_body.mr_enclave[27],
-            quote->report_body.mr_enclave[28], quote->report_body.mr_enclave[29],
-            quote->report_body.mr_enclave[30], quote->report_body.mr_enclave[31]);
-            
-        fprintf(stdout, "mrsigner=%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x\n",
-            quote->report_body.mr_signer[0], quote->report_body.mr_signer[1],
-            quote->report_body.mr_signer[2], quote->report_body.mr_signer[3],
-            quote->report_body.mr_signer[4], quote->report_body.mr_signer[5],
-            quote->report_body.mr_signer[6], quote->report_body.mr_signer[7],
-            quote->report_body.mr_signer[8], quote->report_body.mr_signer[9],
-            quote->report_body.mr_signer[10], quote->report_body.mr_signer[11],
-            quote->report_body.mr_signer[12], quote->report_body.mr_signer[13],
-            quote->report_body.mr_signer[14], quote->report_body.mr_signer[15],
-            quote->report_body.mr_signer[16], quote->report_body.mr_signer[17],
-            quote->report_body.mr_signer[18], quote->report_body.mr_signer[19],
-            quote->report_body.mr_signer[20], quote->report_body.mr_signer[21],
-            quote->report_body.mr_signer[22], quote->report_body.mr_signer[23],
-            quote->report_body.mr_signer[24], quote->report_body.mr_signer[25],
-            quote->report_body.mr_signer[26], quote->report_body.mr_signer[27],
-            quote->report_body.mr_signer[28], quote->report_body.mr_signer[29],
-            quote->report_body.mr_signer[30], quote->report_body.mr_signer[31]);
-            
-        fprintf(stdout, "version=%d\n", quote->version);
-        fprintf(stdout, "signtype=%d\n", quote->sign_type);
-        fprintf(stdout, "isvprodid=%d\n", quote->report_body.isv_prod_id);
-        fprintf(stdout, "isvsvn=%d\n", quote->report_body.isv_svn);
+        fprintf(stdout, "mrenclave=");
+        for (int i = 0; i < 32; i++) {
+            fprintf(stdout, "%02x", quote_info.mr_enclave[i]);
+        }
+        fprintf(stdout, "\n");
+
+        fprintf(stdout, "mrsigner=");
+        for (int i = 0; i < 32; i++) {
+            fprintf(stdout, "%02x", quote_info.mr_signer[i]);
+        }
+        fprintf(stdout, "\n");
+
+        fprintf(stdout, "isvprodid=%d\n", quote_info.isv_prod_id);
+        fprintf(stdout, "isvsvn=%d\n", quote_info.isv_svn);
     } else if (!opts.quiet) {
         /* Normal Unix-like output with optional verbosity */
         if (opts.verbose) {
             fprintf(stdout, "SGX Quote verification successful\n");
             fprintf(stdout, "MRENCLAVE: ");
             for (int i = 0; i < 32; i++) {
-                fprintf(stdout, "%02x", quote->report_body.mr_enclave[i]);
+                fprintf(stdout, "%02x", quote_info.mr_enclave[i]);
             }
             fprintf(stdout, "\n");
-            
+
             fprintf(stdout, "MRSIGNER: ");
             for (int i = 0; i < 32; i++) {
-                fprintf(stdout, "%02x", quote->report_body.mr_signer[i]);
+                fprintf(stdout, "%02x", quote_info.mr_signer[i]);
             }
             fprintf(stdout, "\n");
-            
-            fprintf(stdout, "ISV Product ID: %d\n", quote->report_body.isv_prod_id);
-            fprintf(stdout, "ISV SVN: %d\n", quote->report_body.isv_svn);
+
+            fprintf(stdout, "ISV Product ID: %d\n", quote_info.isv_prod_id);
+            fprintf(stdout, "ISV SVN: %d\n", quote_info.isv_svn);
         } else {
             /* Simple verification success message */
             fprintf(stdout, "SGX quote verification successful\n");
         }
     }
-    
+
     /* Cleanup */
-    free(quote_buffer.data);
-    X509_free(cert);
+    free_quote(quote_obj);
+    free_certificate(cert);
     
     /* 
      * Modern OpenSSL (3.0+) doesn't need explicit cleanup calls. 

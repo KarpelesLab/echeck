@@ -4,6 +4,7 @@
 
 #include "echeck.h"
 #include "echeck_internal.h"
+#include "sgx_cert_verify.h"
 /* OpenSSL headers are accessed through openssl_runtime.h included in common.h */
 
 /* Initialize the certificate verification result structure */
@@ -131,7 +132,7 @@ int extract_pck_cert_chain(const sgx_quote_t *quote, sgx_cert_verification_resul
 }
 
 /* Verify the PCK certificate chain against a trusted CA */
-int verify_pck_cert_chain(sgx_cert_verification_result_t *result, STACK_OF(X509) *trusted_ca) {
+int verify_pck_cert_chain_internal(sgx_cert_verification_result_t *result, STACK_OF(X509) *trusted_ca) {
     if (!result->pck_cert) {
         fprintf(stderr, "No PCK certificate to verify\n");
         return 0;
@@ -320,14 +321,18 @@ int verify_pck_cert_chain(sgx_cert_verification_result_t *result, STACK_OF(X509)
 }
 
 /* Verify that the attestation key is certified by the PCK certificate */
-int verify_attestation_key(const sgx_quote_t *quote, sgx_cert_verification_result_t *result) {
+int verify_attestation_key_internal(const sgx_quote_t *quote, sgx_cert_verification_result_t *result) {
     if (!result->pck_cert) {
         fprintf(stderr, "No PCK certificate to verify against\n");
         return 0;
     }
     
     /* Extract the attestation key */
-    EVP_PKEY *attest_key = extract_attestation_key(quote);
+    EVP_PKEY *attest_key = NULL;
+    if (!extract_attestation_key(quote, &attest_key)) {
+        fprintf(stderr, "Failed to extract attestation key\n");
+        return 0;
+    }
     if (!attest_key) {
         fprintf(stderr, "Failed to extract attestation key\n");
         return 0;

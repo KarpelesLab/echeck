@@ -4,12 +4,35 @@ A utility for extracting and validating Intel SGX quotes embedded in X.509 certi
 
 ## Overview
 
-This tool is designed to:
+This tool and library are designed to:
 
 1. Load X.509 certificates that contain SGX quotes
 2. Extract the SGX quote extension (OID 1.3.6.1.4.1.311.105.1)
 3. Parse and display key fields from the quote
-4. Perform basic validation of the quote structure
+4. Perform full validation of the quote, including:
+   - Signature verification
+   - Certificate chain verification
+   - Attestation key verification
+   - MRENCLAVE/MRSIGNER validation
+
+### SGX Attestation and TLS Connections
+
+Intel SGX (Software Guard Extensions) provides a hardware-based trusted execution environment that enables secure code execution, even in untrusted environments. A key feature of SGX is **remote attestation**, which allows a remote party to verify the identity and integrity of an SGX enclave.
+
+The remote attestation process involves:
+
+1. An enclave generates a report that includes its identity (MRENCLAVE, MRSIGNER)
+2. This report is signed by the Intel Quoting Enclave, creating a quote
+3. The quote can be embedded in an X.509 certificate extension
+4. The certificate can be used in a TLS connection
+
+This library enables verification of such certificates by:
+- Extracting the SGX quote from the certificate
+- Verifying the quote's signature against Intel's Certificate Chain
+- Confirming that the report data in the quote matches the certificate's public key
+- Validating MRENCLAVE/MRSIGNER values against expected values
+
+By integrating this verification into a TLS handshake (see API examples below), you can establish a secure, attested connection to an SGX enclave, ensuring that you're communicating with a genuine and unmodified enclave within an SGX-enabled CPU.
 
 ## Usage
 
@@ -173,6 +196,239 @@ Or by directly linking:
 gcc -o myapp myapp.c -I/usr/local/include/echeck -L/usr/local/lib -lecheck -lssl -lcrypto
 ```
 
+### API Examples
+
+Here are some examples of how to use the echeck library API in your own code:
+
+#### Basic Quote Extraction and Verification
+
+```c
+#include <echeck.h>
+#include <stdio.h>
+
+int main() {
+    // Initialize OpenSSL
+    if (!initialize_openssl()) {
+        fprintf(stderr, "Failed to initialize OpenSSL\n");
+        return 1;
+    }
+
+    // Load a certificate containing an SGX quote
+    void *cert = load_certificate("/path/to/certificate.pem");
+    if (!cert) {
+        fprintf(stderr, "Failed to load certificate\n");
+        return 1;
+    }
+
+    // Extract SGX quote from the certificate
+    echeck_quote_t *quote = extract_quote(cert);
+    if (!quote) {
+        fprintf(stderr, "Failed to extract SGX quote\n");
+        free_certificate(cert);
+        return 1;
+    }
+
+    // Get the quote information
+    echeck_quote_info_t info;
+    if (!get_quote_info(quote, &info)) {
+        fprintf(stderr, "Failed to get quote info\n");
+        free_quote(quote);
+        free_certificate(cert);
+        return 1;
+    }
+
+    // Print the MRENCLAVE and MRSIGNER values
+    printf("MRENCLAVE: ");
+    for (int i = 0; i < 32; i++) {
+        printf("%02x", info.mr_enclave[i]);
+    }
+    printf("\n");
+
+    printf("MRSIGNER: ");
+    for (int i = 0; i < 32; i++) {
+        printf("%02x", info.mr_signer[i]);
+    }
+    printf("\n");
+
+    // Verify the quote
+    echeck_verification_result_t result;
+    if (!verify_quote(cert, quote, &result)) {
+        fprintf(stderr, "Quote verification failed: %s\n",
+                result.error_message ? result.error_message : "Unknown error");
+        free_quote(quote);
+        free_certificate(cert);
+        return 1;
+    }
+
+    printf("Quote verification successful!\n");
+
+    // Cleanup
+    free_quote(quote);
+    free_certificate(cert);
+    return 0;
+}
+```
+
+#### Verifying Specific MRENCLAVE/MRSIGNER Values
+
+```c
+#include <echeck.h>
+#include <stdio.h>
+#include <string.h>
+
+// Helper function to convert hex string to binary
+int hex_to_bin(const char *hex, uint8_t *bin, size_t bin_size) {
+    if (strlen(hex) != bin_size * 2)
+        return 0;
+
+    for (size_t i = 0; i < bin_size; i++) {
+        if (sscanf(&hex[i*2], "%02hhx", &bin[i]) != 1)
+            return 0;
+    }
+    return 1;
+}
+
+int main() {
+    // Initialize OpenSSL
+    initialize_openssl();
+
+    // Expected MRENCLAVE value (32 bytes)
+    const char *expected_mrenclave_hex = "df2493c11fc01708af6913323b64e20ae84b12779dbe44ba428da66dfc4488f5";
+    uint8_t expected_mrenclave[32];
+
+    if (!hex_to_bin(expected_mrenclave_hex, expected_mrenclave, sizeof(expected_mrenclave))) {
+        fprintf(stderr, "Invalid MRENCLAVE format\n");
+        return 1;
+    }
+
+    // Load and extract quote
+    void *cert = load_certificate("/path/to/certificate.pem");
+    echeck_quote_t *quote = extract_quote(cert);
+
+    // Verify with expected MRENCLAVE
+    if (!verify_quote_measurements(quote, expected_mrenclave, NULL)) {
+        fprintf(stderr, "MRENCLAVE value doesn't match expected value\n");
+        free_quote(quote);
+        free_certificate(cert);
+        return 1;
+    }
+
+    printf("MRENCLAVE verified successfully\n");
+
+    // Cleanup
+    free_quote(quote);
+    free_certificate(cert);
+    return 0;
+}
+```
+
+#### Integration with TLS Connections
+
+Here's an example of how to verify an SGX quote during a TLS handshake, which is useful for attestation in TLS-based applications:
+
+```c
+#include <echeck.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <stdio.h>
+#include <string.h>
+
+// Custom TLS certificate verification function
+int verify_certificate_callback(int preverify_ok, X509_STORE_CTX *ctx) {
+    // First, let OpenSSL do standard verification
+    if (!preverify_ok) {
+        fprintf(stderr, "Standard certificate verification failed\n");
+        return 0;
+    }
+
+    // Get the certificate being verified
+    X509 *cert = X509_STORE_CTX_get_current_cert(ctx);
+    if (!cert) {
+        fprintf(stderr, "Failed to get current certificate\n");
+        return 0;
+    }
+
+    // Extract SGX quote from the certificate
+    echeck_quote_t *quote = extract_quote(cert);
+    if (!quote) {
+        fprintf(stderr, "No SGX quote found in certificate\n");
+        return 0;
+    }
+
+    // Verify the quote
+    echeck_verification_result_t result;
+    int quote_verified = verify_quote(cert, quote, &result);
+
+    // Optional: Check if MRENCLAVE/MRSIGNER matches expected values
+    echeck_quote_info_t info;
+    if (quote_verified && get_quote_info(quote, &info)) {
+        // Example: Check if this is the enclave we're expecting
+        // (In a real application, you would compare against your known good values)
+        const uint8_t expected_mrenclave[32] = {
+            /* Your expected MRENCLAVE value */
+        };
+
+        if (memcmp(info.mr_enclave, expected_mrenclave, 32) != 0) {
+            fprintf(stderr, "MRENCLAVE doesn't match expected value\n");
+            quote_verified = 0;
+        }
+    }
+
+    // Cleanup
+    free_quote(quote);
+
+    return quote_verified;
+}
+
+// Create a TLS client with SGX quote verification
+SSL_CTX* create_tls_client_context() {
+    // Initialize OpenSSL libraries
+    initialize_openssl();
+
+    // Create a new TLS context
+    SSL_CTX *ctx = SSL_CTX_new(TLS_client_method());
+    if (!ctx) {
+        fprintf(stderr, "Failed to create SSL context\n");
+        return NULL;
+    }
+
+    // Set the verification callback
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, verify_certificate_callback);
+
+    // Load trusted CA certificates
+    if (SSL_CTX_load_verify_locations(ctx, "/path/to/ca/cert.pem", NULL) != 1) {
+        fprintf(stderr, "Failed to load CA certificate\n");
+        SSL_CTX_free(ctx);
+        return NULL;
+    }
+
+    return ctx;
+}
+
+// Example usage in a TLS client application
+int connect_to_tls_server(const char *hostname, int port) {
+    // Create a TLS context with SGX quote verification
+    SSL_CTX *ctx = create_tls_client_context();
+    if (!ctx) return 1;
+
+    // Create socket and SSL connection
+    // ... (standard TLS connection code)
+
+    // When performing the TLS handshake, our verify_certificate_callback
+    // will be called to verify both the standard certificate
+    // and the embedded SGX quote
+
+    // SSL_connect(...);
+
+    // ... (rest of your TLS client code)
+
+    // Cleanup
+    // SSL_free(ssl);
+    SSL_CTX_free(ctx);
+    return 0;
+}
+```
+
 ## SGX Quote Fields
 
 The tool extracts and displays the following fields from SGX quotes:
@@ -238,8 +494,92 @@ The tool follows standard Unix exit code conventions:
 
 This makes it suitable for use in scripts and automated workflows.
 
+## Library API Reference
+
+The echeck library provides a simple API for working with SGX quotes in X.509 certificates:
+
+### Core Functions
+
+#### `int initialize_openssl(void)`
+Initialize the OpenSSL library. Call this before using any other functions.
+- Returns: 1 on success, 0 on failure
+
+#### `void* load_certificate(const char *file_path)`
+Load an X.509 certificate from a PEM file.
+- Parameters:
+  - `file_path`: Path to the PEM certificate file
+- Returns: Certificate handle on success, NULL on failure
+
+#### `void free_certificate(void *cert)`
+Free a certificate that was loaded with `load_certificate`.
+- Parameters:
+  - `cert`: Certificate handle returned by `load_certificate`
+
+### Quote Handling Functions
+
+#### `echeck_quote_t* extract_quote(void *cert)`
+Extract an SGX quote from a certificate.
+- Parameters:
+  - `cert`: Certificate handle
+- Returns: Quote handle on success, NULL if no quote was found or on error
+
+#### `void free_quote(echeck_quote_t *quote)`
+Free a quote that was extracted with `extract_quote`.
+- Parameters:
+  - `quote`: Quote handle returned by `extract_quote`
+
+#### `int get_quote_info(echeck_quote_t *quote, echeck_quote_info_t *info)`
+Extract information from an SGX quote into the provided structure.
+- Parameters:
+  - `quote`: Quote handle
+  - `info`: Pointer to a structure that will be filled with quote information
+- Returns: 1 on success, 0 on failure
+
+### Verification Functions
+
+#### `int verify_quote(void *cert, echeck_quote_t *quote, echeck_verification_result_t *result)`
+Perform full verification of an SGX quote against its certificate, including signature verification, certificate chain verification, and attestation key verification.
+- Parameters:
+  - `cert`: Certificate handle
+  - `quote`: Quote handle
+  - `result`: Pointer to a structure that will be filled with verification results
+- Returns: 1 if the verification succeeded, 0 if it failed
+
+#### `int verify_quote_measurements(echeck_quote_t *quote, const uint8_t *expected_mrenclave, const uint8_t *expected_mrsigner)`
+Verify the MRENCLAVE and/or MRSIGNER values of a quote against expected values.
+- Parameters:
+  - `quote`: Quote handle
+  - `expected_mrenclave`: Expected MRENCLAVE value (32 bytes), or NULL to skip check
+  - `expected_mrsigner`: Expected MRSIGNER value (32 bytes), or NULL to skip check
+- Returns: 1 if all the provided values match, 0 otherwise
+
+### Data Structures
+
+#### `echeck_quote_info_t`
+Structure containing information extracted from an SGX quote.
+- Fields:
+  - `uint8_t mr_enclave[32]`: MRENCLAVE value (32 bytes)
+  - `uint8_t mr_signer[32]`: MRSIGNER value (32 bytes)
+  - `uint16_t isv_prod_id`: ISV Product ID
+  - `uint16_t isv_svn`: ISV Security Version Number
+
+#### `echeck_verification_result_t`
+Structure containing the results of quote verification.
+- Fields:
+  - `int valid`: 1 if the quote is valid, 0 if invalid
+  - `char *error_message`: Error message if verification failed, NULL otherwise
+  - `int mr_enclave_valid`: MRENCLAVE validation result
+  - `int mr_signer_valid`: MRSIGNER validation result
+  - `int signature_valid`: Quote signature validation result
+  - `int quote_valid`: Overall quote format and data validation
+  - `int report_data_matches_cert`: Report data matches certificate
+  - `int cert_chain_valid`: Certificate chain validation result
+  - `int checks_performed`: Number of checks performed
+  - `int checks_passed`: Number of checks that passed
+
 ## Future Enhancements
 
 - Integration with Intel Attestation Services for online verification
 - Certificate revocation checking via OCSP or CRLs
 - Support for custom verification policies
+- Expanded API for more fine-grained control over verification process

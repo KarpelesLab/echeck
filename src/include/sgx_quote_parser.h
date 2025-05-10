@@ -11,7 +11,7 @@ typedef struct {
 } sgx_quote_buffer_t;
 
 /* Extract SGX quote extension from a certificate */
-int extract_sgx_quote(X509 *cert, sgx_quote_buffer_t *quote_buffer);
+int extract_sgx_quote(void *cert_ptr, sgx_quote_buffer_t *quote_buffer);
 
 /* Compute a hash of the SGX quote body for verification */
 int compute_quote_hash(const sgx_quote_t *quote, unsigned char *hash, unsigned int *hash_len);

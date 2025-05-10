@@ -5,23 +5,12 @@
 #include "openssl_runtime.h"
 /* sgx_cert_verify.h declarations included via echeck_internal.h */
 
-/* Result structure for verification checks */
-typedef struct {
-    int mr_enclave_valid;
-    int mr_signer_valid;
-    int signature_valid;
-    int version_valid;
-    int report_data_matches_cert;
-    int cert_chain_valid;        /* Flag indicating if the certificate chain is valid */
-    int attestation_key_valid;   /* Flag indicating if the attestation key is certified */
-    int total_checks;
-    int checks_passed;
-    sgx_cert_verification_result_t cert_result; /* Certificate verification details */
-} sgx_verification_result_t;
+/* Using echeck_verification_result_t from public API */
+typedef echeck_verification_result_t sgx_verification_result_t;
 
 /* Verify SGX quote using built-in CA certificates */
 int verify_sgx_quote(const unsigned char *quote_data, int quote_len,
-                     sgx_verification_result_t *result);
+                     echeck_verification_result_t *result);
 
 /* Verify quote signature using public key from certificate */
 int verify_quote_signature(const sgx_quote_t *quote, const unsigned char *quote_hash, 

@@ -8,7 +8,7 @@
 void dump_buffer(const char *name, const unsigned char *data, size_t len);
 
 /* Extract the attestation key from the quote signature data */
-EVP_PKEY *extract_attestation_key(const sgx_quote_t *quote);
+int extract_attestation_key(const sgx_quote_t *quote, EVP_PKEY **out_key);
 
 /* Extract and parse ECDSA signature from quote */
 int extract_ecdsa_signature(const sgx_quote_t *quote, 

@@ -1,5 +1,6 @@
 #include "echeck.h"
 #include "echeck_internal.h"
+#include "sgx_quote_parser.h"
 #include <stdlib.h>
 #include <string.h>
 

@@ -42,9 +42,9 @@ int verify_attestation_key(const sgx_quote_t *quote, EVP_PKEY *attestation_key,
                         STACK_OF(X509) *cert_stack);
 
 /* Internal functions from sgx_cert_verify.c */
-int verify_certificate_chain(X509 *leaf_cert, STACK_OF(X509) *chain, 
+int verify_certificate_chain(X509 *leaf_cert, STACK_OF(X509) *chain,
                             STACK_OF(X509) *trusted_certs,
-                            sgx_cert_verification_result_t *result);
+                            echeck_verification_result_t *result);
 
 /* Internal functions from sgx_utils.c */
 void dump_buffer(const char *name, const unsigned char *data, size_t len);
