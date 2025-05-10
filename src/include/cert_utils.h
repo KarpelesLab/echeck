@@ -1,7 +1,18 @@
 #ifndef CERT_UTILS_H
 #define CERT_UTILS_H
 
+/* Include OpenSSL headers based on the build mode */
+#ifdef OPENSSL_RUNTIME_LINK
 #include "openssl_runtime.h"
+#else
+#include <openssl/bio.h>
+#include <openssl/pem.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
+#include <openssl/sha.h>
+#include <openssl/evp.h>
+#include <openssl/ecdsa.h>
+#endif
 
 /* Load a certificate from a PEM file */
 X509 *load_certificate(const char *file_path);

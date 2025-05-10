@@ -1,8 +1,20 @@
 #ifndef SGX_QUOTE_PARSER_H
 #define SGX_QUOTE_PARSER_H
 
-#include "openssl_runtime.h"
 /* SGX types included via echeck.h */
+
+/* Include OpenSSL headers based on the build mode */
+#ifdef OPENSSL_RUNTIME_LINK
+#include "openssl_runtime.h"
+#else
+#include <openssl/bio.h>
+#include <openssl/pem.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
+#include <openssl/sha.h>
+#include <openssl/evp.h>
+#include <openssl/ecdsa.h>
+#endif
 
 /* Result structure for quote extraction */
 typedef struct {

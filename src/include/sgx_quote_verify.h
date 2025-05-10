@@ -2,7 +2,19 @@
 #define SGX_QUOTE_VERIFY_H
 
 /* SGX types included via echeck.h */
+
+/* Include OpenSSL headers based on the build mode */
+#ifdef OPENSSL_RUNTIME_LINK
 #include "openssl_runtime.h"
+#else
+#include <openssl/bio.h>
+#include <openssl/pem.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
+#include <openssl/sha.h>
+#include <openssl/evp.h>
+#include <openssl/ecdsa.h>
+#endif
 /* sgx_cert_verify.h declarations included via echeck_internal.h */
 
 /* Using echeck_verification_result_t from public API */
