@@ -12,8 +12,17 @@ add_compile_options(-Wall -pipe -O2 -g -ggdb)
 option(OPENSSL_RUNTIME_LINK "Load OpenSSL functions at runtime using dlopen instead of linking at build time" OFF)
 
 # Find OpenSSL
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(OPENSSL REQUIRED libssl libcrypto)
+find_package(PkgConfig QUIET)
+if(PKG_CONFIG_FOUND)
+    # If pkg-config is available, use it to find OpenSSL
+    pkg_check_modules(OPENSSL REQUIRED libssl libcrypto)
+else()
+    # Fallback to CMake's built-in FindOpenSSL
+    find_package(OpenSSL REQUIRED)
+    # Match the variable naming convention from pkg_check_modules
+    set(OPENSSL_LIBRARIES ${OPENSSL_LIBRARIES})
+    set(OPENSSL_INCLUDE_DIRS ${OPENSSL_INCLUDE_DIR})
+endif()
 
 # Library source files (everything except main.c)
 set(LIB_SOURCES

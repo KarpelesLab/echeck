@@ -146,10 +146,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install OpenSSL
+    - name: Install dependencies
       shell: pwsh
       run: |
         choco install openssl
+        choco install pkgconfiglite
         echo "OPENSSL_ROOT_DIR=C:/Program Files/OpenSSL-Win64" >> $env:GITHUB_ENV
         echo "OPENSSL_LIBRARIES=C:/Program Files/OpenSSL-Win64/lib" >> $env:GITHUB_ENV
         echo "OPENSSL_INCLUDE_DIR=C:/Program Files/OpenSSL-Win64/include" >> $env:GITHUB_ENV
