@@ -52,7 +52,7 @@ int extract_pck_cert_chain(const sgx_quote_t *quote, sgx_cert_verification_resul
     const uint8_t *cert_data = auth_data->cert_data;
     uint16_t cert_data_size = auth_data->cert_data_size;
     
-    if (global_verbose_flag) {
+    if (is_verbose_mode()) {
         fprintf(stderr, "Found PCK certificate chain (%u bytes)\n", cert_data_size);
     }
     
@@ -74,7 +74,7 @@ int extract_pck_cert_chain(const sgx_quote_t *quote, sgx_cert_verification_resul
         /* Get certificate subject name */
         char subject[256];
         X509_NAME_oneline(X509_get_subject_name(cert), subject, sizeof(subject));
-        if (global_verbose_flag) {
+        if (is_verbose_mode()) {
             fprintf(stderr, "Certificate %d: %s\n", cert_count, subject);
         }
         
@@ -117,7 +117,7 @@ int extract_pck_cert_chain(const sgx_quote_t *quote, sgx_cert_verification_resul
     /* Update the result */
     result->cert_count = cert_count;
     
-    if (global_verbose_flag) {
+    if (is_verbose_mode()) {
         fprintf(stderr, "Successfully extracted %d certificates from the quote\n", cert_count);
     }
     return 1;
