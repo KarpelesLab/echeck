@@ -11,18 +11,8 @@ add_compile_options(-Wall -pipe -O2 -g -ggdb)
 # Option to use runtime loading of OpenSSL
 option(OPENSSL_RUNTIME_LINK "Load OpenSSL functions at runtime using dlopen instead of linking at build time" OFF)
 
-# Find OpenSSL
-find_package(PkgConfig QUIET)
-if(PKG_CONFIG_FOUND)
-    # If pkg-config is available, use it to find OpenSSL
-    pkg_check_modules(OPENSSL REQUIRED libssl libcrypto)
-else()
-    # Fallback to CMake's built-in FindOpenSSL
-    find_package(OpenSSL REQUIRED)
-    # Match the variable naming convention from pkg_check_modules
-    set(OPENSSL_LIBRARIES ${OPENSSL_LIBRARIES})
-    set(OPENSSL_INCLUDE_DIRS ${OPENSSL_INCLUDE_DIR})
-endif()
+# Find OpenSSL using CMake's built-in module
+find_package(OpenSSL REQUIRED)
 
 # Library source files (everything except main.c)
 set(LIB_SOURCES
@@ -73,17 +63,15 @@ target_compile_definitions(libecheck PRIVATE ECHECK_SHARED_LIBRARY)
 # Include directories for static library
 target_include_directories(libecheck_static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(libecheck_static PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/include)
-target_include_directories(libecheck_static PRIVATE ${OPENSSL_INCLUDE_DIRS})
 
 # Include directories for shared library
 target_include_directories(libecheck PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(libecheck PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/include)
-target_include_directories(libecheck PRIVATE ${OPENSSL_INCLUDE_DIRS})
 
 # Link with OpenSSL only if not using runtime linking
 if(NOT OPENSSL_RUNTIME_LINK)
-    target_link_libraries(libecheck_static PRIVATE ${OPENSSL_LIBRARIES})
-    target_link_libraries(libecheck PRIVATE ${OPENSSL_LIBRARIES})
+    target_link_libraries(libecheck_static PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+    target_link_libraries(libecheck PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 else()
     # For runtime linking, link with appropriate dynamic loading library
     if(WIN32)
@@ -102,11 +90,10 @@ add_executable(echeck src/main/main.c)
 # Link against our static library
 target_include_directories(echeck PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(echeck PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/include)
-target_include_directories(echeck PRIVATE ${OPENSSL_INCLUDE_DIRS})
 
 # Link with OpenSSL only if not using runtime linking
 if(NOT OPENSSL_RUNTIME_LINK)
-    target_link_libraries(echeck PRIVATE libecheck_static ${OPENSSL_LIBRARIES})
+    target_link_libraries(echeck PRIVATE libecheck_static OpenSSL::SSL OpenSSL::Crypto)
 else()
     target_link_libraries(echeck PRIVATE libecheck_static)
 endif()
