@@ -20,7 +20,7 @@ jobs:
         runtime-link: [false, true]
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install OpenSSL (Ubuntu)
       if: matrix.os == 'ubuntu-22.04'
@@ -140,28 +140,28 @@ jobs:
 
     - name: Upload Ubuntu artifacts
       if: matrix.os == 'ubuntu-22.04'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: echeck-ubuntu-${{ matrix.runtime-link && 'runtime' || 'static' }}
         path: package/*.tar.gz
 
     - name: Upload macOS artifacts
       if: matrix.os == 'macos-latest'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: echeck-macos-${{ matrix.runtime-link && 'runtime' || 'static' }}
         path: package/*.tar.gz
 
     - name: Upload Windows artifacts
       if: matrix.os == 'windows-latest'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: echeck-windows-${{ matrix.runtime-link && 'runtime' || 'static' }}
         path: package/*.zip
         
     - name: Upload artifacts to release
       if: github.event_name == 'release'
-      uses: actions/github-script@v6
+      uses: actions/github-script@v7
       with:
         script: |
           const fs = require('fs');
@@ -187,11 +187,13 @@ jobs:
             
             console.log(`Uploading ${filePath} to release ${release.id}`);
             
+            const fileContent = fs.readFileSync(filePath);
+
             await github.rest.repos.uploadReleaseAsset({
-              owner: repo.owner,
-              repo: repo.repo,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
               release_id: release.id,
               name: file,
-              data: fs.readFileSync(filePath)
+              data: fileContent
             });
           }
