@@ -112,8 +112,8 @@ int main(int argc, char *argv[]) {
     /* Get certificate file path */
     opts.cert_file = argv[optind];
     
-    /* Set global verbose flag based on command-line options */
-    global_verbose_flag = opts.verbose;
+    /* Set global verbose mode based on command-line options */
+    set_verbose_mode(opts.verbose);
     
     /* Initialize OpenSSL (using runtime linking if enabled) */
     if (!initialize_openssl()) {

@@ -139,9 +139,11 @@ ECHECK_API int verify_quote(void *cert, echeck_quote_t *quote, echeck_verificati
 ECHECK_API int verify_quote_measurements(echeck_quote_t *quote, const uint8_t *expected_mrenclave, const uint8_t *expected_mrsigner);
 
 /**
- * @brief Set global verbose flag
+ * @brief Set global verbose mode
+ *
+ * @param verbose 1 to enable verbose mode, 0 to disable
  */
-ECHECK_API extern int global_verbose_flag;
+ECHECK_API void set_verbose_mode(int verbose);
 
 #ifdef __cplusplus
 }

@@ -10,7 +10,12 @@
 #endif
 
 /* Initialize global verbose flag */
-int global_verbose_flag = 0;
+static int global_verbose_flag = 0;
+
+/* Set verbose mode */
+void set_verbose_mode(int verbose) {
+    global_verbose_flag = verbose ? 1 : 0;
+}
 
 /* Static variable to track initialization status */
 static int openssl_initialized = 0;

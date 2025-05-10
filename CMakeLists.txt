@@ -104,11 +104,27 @@ add_executable(echeck src/main/main.c)
 target_include_directories(echeck PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(echeck PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/include)
 
-# Link with OpenSSL only if not using runtime linking
-if(NOT OPENSSL_RUNTIME_LINK)
-    target_link_libraries(echeck PRIVATE libecheck_static OpenSSL::SSL OpenSSL::Crypto)
+# On Windows, we need to define ECHECK_SHARED_LIBRARY for the executable as well
+if(WIN32)
+    target_compile_definitions(echeck PRIVATE ECHECK_SHARED_LIBRARY)
+endif()
+
+# Link with the appropriate libraries
+if(WIN32)
+    # On Windows, link against the DLL import library
+    target_link_libraries(echeck PRIVATE libecheck)
+
+    # Add OpenSSL only if not using runtime linking
+    if(NOT OPENSSL_RUNTIME_LINK)
+        target_link_libraries(echeck PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+    endif()
 else()
-    target_link_libraries(echeck PRIVATE libecheck_static)
+    # On other platforms, link against the static library
+    if(NOT OPENSSL_RUNTIME_LINK)
+        target_link_libraries(echeck PRIVATE libecheck_static OpenSSL::SSL OpenSSL::Crypto)
+    else()
+        target_link_libraries(echeck PRIVATE libecheck_static)
+    endif()
 endif()
 
 # Not needed as library version is already set above
