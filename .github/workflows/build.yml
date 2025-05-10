@@ -290,7 +290,7 @@ jobs:
         Copy-Item "C:/Program Files/OpenSSL-Win64/bin/libssl-3-x64.dll" -Destination "package/$ARTIFACT_NAME/bin/openssl/" -ErrorAction SilentlyContinue
 
         # Add a README for the OpenSSL DLLs
-        Set-Content -Path "package/$ARTIFACT_NAME/bin/openssl/README.txt" -Value @"
+        $readmeContent = @'
 These OpenSSL DLLs are provided for convenience.
 When running in runtime mode, place the appropriate OpenSSL DLLs for your architecture in the same directory as the echeck.exe executable.
 
@@ -299,7 +299,8 @@ For ARM64 Windows:
 - libssl-3-arm64.dll
 
 You can download the latest OpenSSL for Windows from https://www.openssl.org/
-"@
+'@
+        Set-Content -Path "package/$ARTIFACT_NAME/bin/openssl/README.txt" -Value $readmeContent
 
         # Create zip archive
         Compress-Archive -Path "package/$ARTIFACT_NAME" -DestinationPath "package/$ARTIFACT_NAME.zip"
