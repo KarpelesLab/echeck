@@ -321,11 +321,18 @@ jobs:
       run: |
         New-Item -ItemType Directory -Force -Path build
         cd build
-        # For now, always use runtime mode for ARM64
-        # TODO: When we have ARM64 libraries, use matrix.link-type to decide
-        cmake -G "Visual Studio 17 2022" -A ARM64 -DOPENSSL_RUNTIME_LINK=ON `
-          -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
-          -DOPENSSL_INCLUDE_DIR="$env:OPENSSL_INCLUDE_DIR" ..
+        # Use the link-type matrix variable to decide between static and runtime
+        if ("${{ matrix.link-type }}" -eq "Runtime") {
+          cmake -G "Visual Studio 17 2022" -A ARM64 -DOPENSSL_RUNTIME_LINK=ON `
+            -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
+            -DOPENSSL_INCLUDE_DIR="$env:OPENSSL_INCLUDE_DIR" ..
+        } else {
+          # For static mode, we still need to use runtime OpenSSL on ARM64 for now,
+          # but we don't define OPENSSL_RUNTIME_LINK so it links with stubs
+          cmake -G "Visual Studio 17 2022" -A ARM64 `
+            -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
+            -DOPENSSL_INCLUDE_DIR="$env:OPENSSL_INCLUDE_DIR" ..
+        }
 
     - name: Build
       shell: pwsh
