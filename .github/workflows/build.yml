@@ -336,14 +336,9 @@ jobs:
         # Create OpenSSL DLLs directory for runtime use
         New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/bin/openssl"
 
-        # Download sample OpenSSL DLLs from program files (x64 ones for now)
-        # TODO: Replace with ARM64 OpenSSL DLLs once we have our custom build
-        $opensslPath = $env:OPENSSL_ROOT_DIR
-        Write-Host "Copying OpenSSL DLLs from $opensslPath/bin"
-        Get-ChildItem -Path "$opensslPath/bin" -Include *.dll | ForEach-Object {
-            Write-Host "  Copying $($_.Name)"
-            Copy-Item $_.FullName -Destination "package/$ARTIFACT_NAME/bin/openssl/" -ErrorAction SilentlyContinue
-        }
+        # Create empty directory for OpenSSL ARM64 DLLs
+        # DLLs will be provided separately from our custom ARM64 OpenSSL build workflow
+        Write-Host "Creating empty directory for OpenSSL ARM64 DLLs"
 
         # Create zip archive
         Compress-Archive -Path "package/$ARTIFACT_NAME" -DestinationPath "package/$ARTIFACT_NAME.zip"

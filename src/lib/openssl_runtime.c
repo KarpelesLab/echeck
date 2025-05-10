@@ -192,9 +192,6 @@ int init_openssl_runtime(void) {
         "C:\\Program Files\\OpenSSL-Win64\\bin\\libcrypto-3-arm64.dll",
         "C:\\Program Files\\OpenSSL\\bin\\libcrypto-3-arm64.dll",
         "C:\\Program Files\\OpenSSL-ARM64\\bin\\libcrypto-3-arm64.dll",
-        /* Fall back to x64 DLLs if ARM64 not available */
-        "C:\\Program Files\\OpenSSL-Win64\\bin\\libcrypto-3-x64.dll",
-        "C:\\Program Files\\OpenSSL\\bin\\libcrypto-3-x64.dll",
 #else
         /* x64 search paths */
         "C:\\Program Files\\OpenSSL-Win64\\bin\\libcrypto-3-x64.dll",
@@ -213,9 +210,6 @@ int init_openssl_runtime(void) {
         "C:\\Program Files\\OpenSSL-Win64\\bin\\libssl-3-arm64.dll",
         "C:\\Program Files\\OpenSSL\\bin\\libssl-3-arm64.dll",
         "C:\\Program Files\\OpenSSL-ARM64\\bin\\libssl-3-arm64.dll",
-        /* Fall back to x64 DLLs if ARM64 not available */
-        "C:\\Program Files\\OpenSSL-Win64\\bin\\libssl-3-x64.dll",
-        "C:\\Program Files\\OpenSSL\\bin\\libssl-3-x64.dll",
 #else
         /* x64 search paths */
         "C:\\Program Files\\OpenSSL-Win64\\bin\\libssl-3-x64.dll",
