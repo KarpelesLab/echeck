@@ -1,0 +1,197 @@
+name: Build Library
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  release:
+    types: [ published ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }} (${{ matrix.runtime-link && 'Runtime' || 'Static' }} OpenSSL)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest, macos-latest]
+        runtime-link: [false, true]
+    
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install OpenSSL (Ubuntu)
+      if: matrix.os == 'ubuntu-22.04'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libssl-dev
+
+    - name: Install OpenSSL (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install openssl@3
+
+    - name: Install OpenSSL (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        vcpkg install openssl:x64-windows
+        echo "OPENSSL_ROOT_DIR=$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows" >> $env:GITHUB_ENV
+
+    - name: Configure CMake (Ubuntu/macOS with runtime link)
+      if: (matrix.os == 'ubuntu-22.04' || matrix.os == 'macos-latest') && matrix.runtime-link
+      run: |
+        mkdir -p build
+        cd build
+        cmake -DOPENSSL_RUNTIME_LINK=ON ..
+
+    - name: Configure CMake (Ubuntu/macOS without runtime link)
+      if: (matrix.os == 'ubuntu-22.04' || matrix.os == 'macos-latest') && !matrix.runtime-link
+      run: |
+        mkdir -p build
+        cd build
+        cmake ..
+
+    - name: Configure CMake (Windows with runtime link)
+      if: matrix.os == 'windows-latest' && matrix.runtime-link
+      run: |
+        mkdir -p build
+        cd build
+        cmake -DOPENSSL_RUNTIME_LINK=ON -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" ..
+
+    - name: Configure CMake (Windows without runtime link)
+      if: matrix.os == 'windows-latest' && !matrix.runtime-link
+      run: |
+        mkdir -p build
+        cd build
+        cmake -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" ..
+
+    - name: Build
+      run: |
+        cd build
+        cmake --build . --config Release
+
+    - name: Run tests
+      run: |
+        cd build
+        ctest -C Release --output-on-failure
+
+    - name: Create package directory
+      run: mkdir -p package
+
+    - name: Package library (Ubuntu)
+      if: matrix.os == 'ubuntu-22.04'
+      run: |
+        # Create artifact directory
+        ARTIFACT_NAME=echeck-ubuntu-$(date +%Y%m%d)-${{ matrix.runtime-link && 'runtime' || 'static' }}
+        mkdir -p "package/$ARTIFACT_NAME/bin"
+        mkdir -p "package/$ARTIFACT_NAME/lib"
+        mkdir -p "package/$ARTIFACT_NAME/include/echeck"
+        
+        # Copy files
+        cp build/echeck "package/$ARTIFACT_NAME/bin/"
+        cp build/libecheck.a "package/$ARTIFACT_NAME/lib/"
+        cp include/echeck.h "package/$ARTIFACT_NAME/include/echeck/"
+        cp README.md LICENSE* "package/$ARTIFACT_NAME/" 2>/dev/null || true
+        
+        # Create tarball
+        cd package
+        tar -czvf "$ARTIFACT_NAME.tar.gz" "$ARTIFACT_NAME"
+
+    - name: Package library (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        # Create artifact directory
+        ARTIFACT_NAME=echeck-macos-$(date +%Y%m%d)-${{ matrix.runtime-link && 'runtime' || 'static' }}
+        mkdir -p "package/$ARTIFACT_NAME/bin"
+        mkdir -p "package/$ARTIFACT_NAME/lib"
+        mkdir -p "package/$ARTIFACT_NAME/include/echeck"
+        
+        # Copy files
+        cp build/echeck "package/$ARTIFACT_NAME/bin/"
+        cp build/libecheck.a "package/$ARTIFACT_NAME/lib/"
+        cp include/echeck.h "package/$ARTIFACT_NAME/include/echeck/"
+        cp README.md LICENSE* "package/$ARTIFACT_NAME/" 2>/dev/null || true
+        
+        # Create tarball
+        cd package
+        tar -czvf "$ARTIFACT_NAME.tar.gz" "$ARTIFACT_NAME"
+
+    - name: Package library (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: pwsh
+      run: |
+        # Create artifact directory
+        $ARTIFACT_NAME = "echeck-windows-$(Get-Date -Format 'yyyyMMdd')-$('${{ matrix.runtime-link }}' -eq 'true' ? 'runtime' : 'static')"
+        New-Item -ItemType Directory -Path "package/$ARTIFACT_NAME/bin" -Force
+        New-Item -ItemType Directory -Path "package/$ARTIFACT_NAME/lib" -Force
+        New-Item -ItemType Directory -Path "package/$ARTIFACT_NAME/include/echeck" -Force
+        
+        # Copy files
+        Copy-Item "build/Release/echeck.exe" -Destination "package/$ARTIFACT_NAME/bin/"
+        Copy-Item "build/Release/echeck.lib" -Destination "package/$ARTIFACT_NAME/lib/"
+        Copy-Item "include/echeck.h" -Destination "package/$ARTIFACT_NAME/include/echeck/"
+        Copy-Item "README.md" -Destination "package/$ARTIFACT_NAME/" -ErrorAction SilentlyContinue
+        Copy-Item "LICENSE*" -Destination "package/$ARTIFACT_NAME/" -ErrorAction SilentlyContinue
+        
+        # Create zip archive
+        Compress-Archive -Path "package/$ARTIFACT_NAME" -DestinationPath "package/$ARTIFACT_NAME.zip"
+
+    - name: Upload Ubuntu artifacts
+      if: matrix.os == 'ubuntu-22.04'
+      uses: actions/upload-artifact@v3
+      with:
+        name: echeck-ubuntu-${{ matrix.runtime-link && 'runtime' || 'static' }}
+        path: package/*.tar.gz
+
+    - name: Upload macOS artifacts
+      if: matrix.os == 'macos-latest'
+      uses: actions/upload-artifact@v3
+      with:
+        name: echeck-macos-${{ matrix.runtime-link && 'runtime' || 'static' }}
+        path: package/*.tar.gz
+
+    - name: Upload Windows artifacts
+      if: matrix.os == 'windows-latest'
+      uses: actions/upload-artifact@v3
+      with:
+        name: echeck-windows-${{ matrix.runtime-link && 'runtime' || 'static' }}
+        path: package/*.zip
+        
+    - name: Upload artifacts to release
+      if: github.event_name == 'release'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          const { repo } = context;
+          
+          // Get the release ID
+          const release = context.payload.release;
+          
+          // Find all package files
+          let packageDir = 'package';
+          let files = [];
+          
+          if ('${{ matrix.os }}' === 'windows-latest') {
+            files = fs.readdirSync(packageDir).filter(file => file.endsWith('.zip'));
+          } else {
+            files = fs.readdirSync(packageDir).filter(file => file.endsWith('.tar.gz'));
+          }
+          
+          // Upload each file to the release
+          for (const file of files) {
+            const filePath = path.join(packageDir, file);
+            
+            console.log(`Uploading ${filePath} to release ${release.id}`);
+            
+            await github.rest.repos.uploadReleaseAsset({
+              owner: repo.owner,
+              repo: repo.repo,
+              release_id: release.id,
+              name: file,
+              data: fs.readFileSync(filePath)
+            });
+          }
