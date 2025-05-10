@@ -1,6 +1,7 @@
 #include "echeck.h"
 #include "echeck_internal.h"
 #include "sgx_utils.h"
+#include <stdlib.h>
 /* OpenSSL headers are accessed through openssl_runtime.h */
 
 /* Initialize verification result structure */

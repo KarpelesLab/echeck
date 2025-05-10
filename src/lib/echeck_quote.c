@@ -6,7 +6,7 @@
 #include "sgx_cert_verify.h"
 #include <stdlib.h>
 #include <string.h>
-#include <openssl/sha.h>
+/* Don't include direct OpenSSL headers when we have runtime loading */
 
 /* External functions that we use */
 extern int verify_report_data(const sgx_quote_t *quote, const unsigned char *pubkey_hash, unsigned int pubkey_hash_len);
