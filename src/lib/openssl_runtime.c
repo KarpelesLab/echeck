@@ -2,6 +2,7 @@
 #include <string.h>
 
 #ifdef OPENSSL_RUNTIME_LINK
+#include "echeck_internal.h" /* For is_verbose_mode() */
 
 /* Include platform-specific headers for dynamic library loading */
 #if defined(_WIN32) || defined(_WIN64)
@@ -128,7 +129,7 @@ static void *libcrypto_handle = NULL;
 #define LOAD_SYMBOL_OPTIONAL(handle, symbol) \
     do { \
         *(void **)(&symbol) = (void *)GetProcAddress(handle, #symbol); \
-        if (!symbol) { \
+        if (!symbol && is_verbose_mode()) { \
             fprintf(stderr, "Warning: Optional symbol %s not found, functionality may be limited\n", #symbol); \
         } \
     } while(0)
@@ -147,7 +148,7 @@ static void *libcrypto_handle = NULL;
 #define LOAD_SYMBOL_OPTIONAL(handle, symbol) \
     do { \
         *(void **)(&symbol) = dlsym(handle, #symbol); \
-        if (!symbol) { \
+        if (!symbol && is_verbose_mode()) { \
             fprintf(stderr, "Warning: Optional symbol %s not found, functionality may be limited\n", #symbol); \
         } \
     } while(0)
@@ -227,12 +228,11 @@ int init_openssl_runtime(void) {
     };
 
     /* Try to load libcrypto from various paths */
+    const char *loaded_crypto_path = NULL;
     for (int i = 0; crypto_paths[i] != NULL; i++) {
         libcrypto_handle = LoadLibraryA(crypto_paths[i]);
         if (libcrypto_handle) {
-            if (i > 0) {
-                fprintf(stderr, "Successfully loaded libcrypto from %s\n", crypto_paths[i]);
-            }
+            loaded_crypto_path = crypto_paths[i];
             break;
         }
     }
@@ -243,12 +243,11 @@ int init_openssl_runtime(void) {
     }
 
     /* Try to load libssl from various paths */
+    const char *loaded_ssl_path = NULL;
     for (int i = 0; ssl_paths[i] != NULL; i++) {
         libssl_handle = LoadLibraryA(ssl_paths[i]);
         if (libssl_handle) {
-            if (i > 0) {
-                fprintf(stderr, "Successfully loaded libssl from %s\n", ssl_paths[i]);
-            }
+            loaded_ssl_path = ssl_paths[i];
             break;
         }
     }
@@ -302,15 +301,14 @@ int init_openssl_runtime(void) {
     };
 
     /* Try to load libcrypto from various paths */
+    const char *loaded_crypto_path = NULL;
     for (int i = 0; crypto_paths[i] != NULL; i++) {
         /* Clear any previous errors */
         dlerror();
 
         libcrypto_handle = dlopen(crypto_paths[i], RTLD_LAZY);
         if (libcrypto_handle) {
-            if (i > 0) {
-                fprintf(stderr, "Successfully loaded libcrypto from %s\n", crypto_paths[i]);
-            }
+            loaded_crypto_path = crypto_paths[i];
             break;
         }
     }
@@ -321,15 +319,14 @@ int init_openssl_runtime(void) {
     }
 
     /* Try to load libssl from various paths */
+    const char *loaded_ssl_path = NULL;
     for (int i = 0; ssl_paths[i] != NULL; i++) {
         /* Clear any previous errors */
         dlerror();
 
         libssl_handle = dlopen(ssl_paths[i], RTLD_LAZY);
         if (libssl_handle) {
-            if (i > 0) {
-                fprintf(stderr, "Successfully loaded libssl from %s\n", ssl_paths[i]);
-            }
+            loaded_ssl_path = ssl_paths[i];
             break;
         }
     }
@@ -439,8 +436,12 @@ int init_openssl_runtime(void) {
     LOAD_SYMBOL_OPTIONAL(libcrypto_handle, OPENSSL_cleanup);
     
     /* Successfully loaded all required symbols */
-    fprintf(stderr, "Successfully loaded OpenSSL libraries at runtime\n");
-    
+    if (is_verbose_mode()) {
+        fprintf(stderr, "Successfully loaded OpenSSL libraries at runtime:\n");
+        fprintf(stderr, "  - libcrypto: %s\n", loaded_crypto_path);
+        fprintf(stderr, "  - libssl: %s\n", loaded_ssl_path);
+    }
+
     /* Successfully loaded all key OpenSSL functions */
     
     return 1;
