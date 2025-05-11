@@ -4,21 +4,7 @@
 #include <stdlib.h>
 /* OpenSSL headers are accessed through openssl_runtime.h */
 
-/* Initialize verification result structure */
-static void init_verification_result(echeck_verification_result_t *result) {
-    result->valid = 0;
-    result->error_message = NULL;
-    result->mr_enclave_valid = 0;
-    result->mr_signer_valid = 0;
-    result->signature_valid = 0;
-    result->quote_valid = 0;
-    result->report_data_matches_cert = 0;
-    result->cert_chain_valid = 0;
-    result->checks_performed = 0;
-    result->checks_passed = 0;
-
-    /* No need to initialize cert_result as it's not in the echeck_verification_result_t structure */
-}
+/* We don't need this function anymore - the caller (verify_quote) initializes the structure */
 
 /* Check if MR value is valid (not all zeros) */
 static int is_mr_value_valid(const unsigned char *mr_value, size_t size) {
@@ -35,8 +21,7 @@ int verify_sgx_quote(const unsigned char *quote_data, int quote_len,
                      echeck_verification_result_t *result) {
     int ret_val = 0;
 
-    /* Initialize result structure */
-    init_verification_result(result);
+    /* The result structure should already be initialized by the caller */
 
     /* Basic validation of the quote data */
     /* Calculate minimum size: 48 bytes (header) + 384 bytes (report body) + 4 bytes (signature_len) */
@@ -257,26 +242,63 @@ int verify_report_data(const sgx_quote_t *quote, const unsigned char *pubkey_has
     int report_data_valid = 1;
     
     /* Compare the report_data against the pubkey_hash */
-    
+
+    /* Debug: Print both values for comparison when in verbose mode */
+    if (is_verbose_mode()) {
+        fprintf(stderr, "Report Data (first 32 bytes): ");
+        for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+            fprintf(stderr, "%02x", quote->report_body.report_data[i]);
+        }
+        fprintf(stderr, "\n");
+
+        fprintf(stderr, "Pubkey Hash (32 bytes): ");
+        for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+            fprintf(stderr, "%02x", pubkey_hash[i]);
+        }
+        fprintf(stderr, "\n");
+    }
+
     /* Verify first 32 bytes (SHA-256 hash) */
     for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
         if (quote->report_body.report_data[i] != pubkey_hash[i]) {
             /* Mismatch found */
             report_data_valid = 0;
+            if (is_verbose_mode()) {
+                fprintf(stderr, "Mismatch at position %d: report_data[%d]=0x%02x, pubkey_hash[%d]=0x%02x\n",
+                        i, i, quote->report_body.report_data[i], i, pubkey_hash[i]);
+            }
             break;
         }
     }
-    
-    if (report_data_valid) {
-        /* First 32 bytes match */
-    }
-    
+
     /* Verify remaining bytes are zeros (padding) */
+    if (is_verbose_mode()) {
+        fprintf(stderr, "Checking report_data padding (bytes 32-63):\n");
+        for (int i = SHA256_DIGEST_LENGTH; i < sizeof(sgx_report_data_t); i += 8) {
+            fprintf(stderr, "  Bytes %2d-%2d: ", i, i+7 < sizeof(sgx_report_data_t) ? i+7 : sizeof(sgx_report_data_t)-1);
+            for (int j = 0; j < 8 && i+j < sizeof(sgx_report_data_t); j++) {
+                fprintf(stderr, "%02x ", quote->report_body.report_data[i+j]);
+            }
+            fprintf(stderr, "\n");
+        }
+    }
+
+    /* Check for non-zero padding bytes */
     for (int i = SHA256_DIGEST_LENGTH; i < sizeof(sgx_report_data_t); i++) {
         if (quote->report_body.report_data[i] != 0) {
             report_data_valid = 0;
+            if (is_verbose_mode()) {
+                fprintf(stderr, "Non-zero padding at position %d: 0x%02x\n",
+                        i, quote->report_body.report_data[i]);
+            }
             break;
         }
+    }
+
+    /* Add verbose debugging for the final result */
+    if (is_verbose_mode()) {
+        fprintf(stderr, "Report data verification result: %s\n",
+                report_data_valid ? "VALID" : "INVALID");
     }
     
     return report_data_valid;

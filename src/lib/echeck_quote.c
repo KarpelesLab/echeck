@@ -180,14 +180,21 @@ ECHECK_API int verify_quote(void *cert_ptr, echeck_quote_t *quote, echeck_verifi
     EVP_PKEY_free(pubkey);
 
     /* Verify that the report data matches the certificate's public key hash */
-    if (!verify_report_data(quote->quote, pubkey_hash, pubkey_hash_len)) {
-        result->error_message = "Report data does not match certificate public key hash";
-        return 0;
+    result->report_data_matches_cert = verify_report_data(quote->quote, pubkey_hash, pubkey_hash_len);
+
+    if (is_verbose_mode()) {
+        fprintf(stderr, "Report data match result: %d\n", result->report_data_matches_cert);
     }
-    result->report_data_matches_cert = 1;
+
+    /* Continue verification even if report data doesn't match - this allows clients to see
+     * the complete verification result set in raw mode */
 
     /* Verify the quote itself using the underlying verification function */
     int verify_result = verify_sgx_quote(quote->data, quote->data_size, result);
+
+    if (is_verbose_mode()) {
+        fprintf(stderr, "Report data match status: %d\n", result->report_data_matches_cert);
+    }
 
     /* Now perform certificate chain verification - very important for security! */
     if (verify_result) {
@@ -228,10 +235,23 @@ ECHECK_API int verify_quote(void *cert_ptr, echeck_quote_t *quote, echeck_verifi
         /* Free CA stack */
         sk_X509_pop_free(ca_stack, X509_free);
 
-        /* Final validation - both quote and cert chain must be valid */
-        result->valid = verify_result && cert_chain_valid && attest_key_valid;
+        /* Final validation - all components must be valid */
+        result->valid = verify_result && cert_chain_valid && attest_key_valid && result->report_data_matches_cert;
+
+        if (is_verbose_mode()) {
+            fprintf(stderr, "Final validation components:\n");
+            fprintf(stderr, "  - Quote verification: %d\n", verify_result);
+            fprintf(stderr, "  - Certificate chain valid: %d\n", cert_chain_valid);
+            fprintf(stderr, "  - Attestation key valid: %d\n", attest_key_valid);
+            fprintf(stderr, "  - Report data matches cert: %d\n", result->report_data_matches_cert);
+            fprintf(stderr, "  - Final valid result: %d\n", result->valid);
+        }
+
+        /* Set appropriate error message based on what failed */
         if (!attest_key_valid) {
             result->error_message = "Attestation key verification failed";
+        } else if (!result->report_data_matches_cert) {
+            result->error_message = "Report data does not match certificate public key hash";
         }
     } else {
         result->valid = 0;
