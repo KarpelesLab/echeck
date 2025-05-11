@@ -232,6 +232,17 @@ int main(int argc, char *argv[]) {
 
         fprintf(stdout, "isvprodid=%d\n", quote_info.isv_prod_id);
         fprintf(stdout, "isvsvn=%d\n", quote_info.isv_svn);
+
+        /* Add detailed verification status outputs */
+        fprintf(stdout, "valid=%d\n", verify_result.valid);
+        fprintf(stdout, "sgx_quote_verified=%d\n", verify_result.quote_valid);
+        fprintf(stdout, "signature_verified=%d\n", verify_result.signature_valid);
+        fprintf(stdout, "cert_chain_verified=%d\n", verify_result.cert_chain_valid);
+        fprintf(stdout, "mrenclave_verified=%d\n", verify_result.mr_enclave_valid);
+        fprintf(stdout, "mrsigner_verified=%d\n", verify_result.mr_signer_valid);
+        fprintf(stdout, "report_data_verified=%d\n", verify_result.report_data_matches_cert);
+        fprintf(stdout, "checks_performed=%d\n", verify_result.checks_performed);
+        fprintf(stdout, "checks_passed=%d\n", verify_result.checks_passed);
     } else if (!opts.quiet) {
         /* Normal Unix-like output with optional verbosity */
         if (opts.verbose) {
