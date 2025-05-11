@@ -10,7 +10,7 @@
 static int global_verbose_flag = 0;
 
 /* Set verbose mode */
-void set_verbose_mode(int verbose) {
+void echeck_set_verbose_mode(int verbose) {
     global_verbose_flag = verbose ? 1 : 0;
 }
 
@@ -23,7 +23,7 @@ int is_verbose_mode(void) {
 static int openssl_initialized = 0;
 
 /* Initialize OpenSSL libraries */
-int initialize_openssl(void) {
+int echeck_initialize(void) {
     if (openssl_initialized) {
         return 1;  /* Already initialized */
     }

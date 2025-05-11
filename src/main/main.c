@@ -114,27 +114,27 @@ int main(int argc, char *argv[]) {
     opts.cert_file = argv[optind];
     
     /* Set global verbose mode based on command-line options */
-    set_verbose_mode(opts.verbose);
-    
+    echeck_set_verbose_mode(opts.verbose);
+
     /* Initialize OpenSSL (using runtime linking if enabled) */
-    if (!initialize_openssl()) {
+    if (!echeck_initialize()) {
         fprintf(stderr, "Error: Failed to initialize OpenSSL\n");
         return 1;
     }
-    
+
     /* Load certificate */
-    void *cert = load_certificate(opts.cert_file);
+    void *cert = echeck_load_certificate(opts.cert_file);
     if (!cert) {
         fprintf(stderr, "Error: Failed to load certificate from %s\n", opts.cert_file);
         return 1;
     }
-    
+
     /* Extract SGX quote */
-    echeck_quote_t *quote_obj = extract_quote(cert);
+    echeck_quote_t *quote_obj = echeck_extract_quote(cert);
 
     if (!quote_obj) {
         fprintf(stderr, "Error: No SGX Quote extension found in certificate\n");
-        free_certificate(cert);
+        echeck_free_certificate(cert);
         return 1;
     }
 
@@ -146,29 +146,39 @@ int main(int argc, char *argv[]) {
 
     /* Get quote info */
     echeck_quote_info_t quote_info;
-    if (!get_quote_info(quote_obj, &quote_info)) {
+    if (!echeck_get_quote_info(quote_obj, &quote_info)) {
         fprintf(stderr, "Error: Failed to get quote info\n");
-        free_quote(quote_obj);
-        free_certificate(cert);
+        echeck_free_quote(quote_obj);
+        echeck_free_certificate(cert);
         return 1;
     }
 
     /* We don't need direct access to the quote structure anymore */
-    
+
     /* Use the verification API to verify the quote */
     echeck_verification_result_t verify_result;
-    if (!verify_quote(cert, quote_obj, &verify_result)) {
+    int verify_status = echeck_verify_quote(cert, quote_obj, &verify_result);
+
+    /* Only exit on verification failure in non-raw mode */
+    if (!verify_status && !opts.raw) {
         fprintf(stderr, "Error: Quote verification failed\n");
         if (verify_result.error_message) {
             fprintf(stderr, "%s\n", verify_result.error_message);
         }
-        free_quote(quote_obj);
-        free_certificate(cert);
+        echeck_free_quote(quote_obj);
+        echeck_free_certificate(cert);
         return 1;
     }
 
     if (opts.verbose && !opts.quiet) {
-        fprintf(stdout, "Quote verification successful\n");
+        if (verify_status) {
+            fprintf(stdout, "Quote verification successful\n");
+        } else {
+            fprintf(stdout, "Quote verification failed: %s\n",
+                    verify_result.error_message ? verify_result.error_message : "Unknown error");
+        }
+        fprintf(stdout, "Report data verification: %s\n",
+                verify_result.report_data_matches_cert ? "Passed" : "Failed");
     }
 
     /* Verify custom MRENCLAVE if specified */
@@ -176,15 +186,15 @@ int main(int argc, char *argv[]) {
         unsigned char expected_mrenclave[32];
         if (!hex_to_bin(opts.mrenclave, expected_mrenclave, sizeof(expected_mrenclave))) {
             fprintf(stderr, "Error: Invalid MRENCLAVE format (expected 64 hex characters)\n");
-            free_quote(quote_obj);
-            free_certificate(cert);
+            echeck_free_quote(quote_obj);
+            echeck_free_certificate(cert);
             return 1;
         }
 
         if (memcmp(quote_info.mr_enclave, expected_mrenclave, sizeof(expected_mrenclave)) != 0) {
             fprintf(stderr, "Error: MRENCLAVE value does not match expected value\n");
-            free_quote(quote_obj);
-            free_certificate(cert);
+            echeck_free_quote(quote_obj);
+            echeck_free_certificate(cert);
             return 1;
         }
 
@@ -198,15 +208,15 @@ int main(int argc, char *argv[]) {
         unsigned char expected_mrsigner[32];
         if (!hex_to_bin(opts.mrsigner, expected_mrsigner, sizeof(expected_mrsigner))) {
             fprintf(stderr, "Error: Invalid MRSIGNER format (expected 64 hex characters)\n");
-            free_quote(quote_obj);
-            free_certificate(cert);
+            echeck_free_quote(quote_obj);
+            echeck_free_certificate(cert);
             return 1;
         }
 
         if (memcmp(quote_info.mr_signer, expected_mrsigner, sizeof(expected_mrsigner)) != 0) {
             fprintf(stderr, "Error: MRSIGNER value does not match expected value\n");
-            free_quote(quote_obj);
-            free_certificate(cert);
+            echeck_free_quote(quote_obj);
+            echeck_free_certificate(cert);
             return 1;
         }
 
@@ -268,8 +278,8 @@ int main(int argc, char *argv[]) {
     }
 
     /* Cleanup */
-    free_quote(quote_obj);
-    free_certificate(cert);
+    echeck_free_quote(quote_obj);
+    echeck_free_certificate(cert);
     
     /* 
      * Modern OpenSSL (3.0+) doesn't need explicit cleanup calls. 

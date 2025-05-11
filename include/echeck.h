@@ -36,10 +36,10 @@ extern "C" {
 
 /**
  * @brief Initialize the library and OpenSSL
- * 
+ *
  * @return 1 on success, 0 on failure
  */
-ECHECK_API int initialize_openssl(void);
+ECHECK_API int echeck_initialize(void);
 
 /**
  * @brief Quote buffer structure (opaque handle)
@@ -81,33 +81,33 @@ typedef struct {
 
 /**
  * @brief Load a certificate from a PEM file
- * 
+ *
  * @param file_path Path to the PEM file
  * @return Certificate pointer on success, NULL on failure
  */
-ECHECK_API void* load_certificate(const char *file_path);
+ECHECK_API void* echeck_load_certificate(const char *file_path);
 
 /**
- * @brief Free a certificate that was loaded with load_certificate
+ * @brief Free a certificate that was loaded with echeck_load_certificate
  *
- * @param cert Certificate pointer returned by load_certificate
+ * @param cert Certificate pointer returned by echeck_load_certificate
  */
-ECHECK_API void free_certificate(void *cert);
+ECHECK_API void echeck_free_certificate(void *cert);
 
 /**
  * @brief Extract SGX quote from a certificate
- * 
+ *
  * @param cert Certificate pointer
  * @return Quote handle on success, NULL on failure
  */
-ECHECK_API echeck_quote_t* extract_quote(void *cert);
+ECHECK_API echeck_quote_t* echeck_extract_quote(void *cert);
 
 /**
- * @brief Free a quote that was extracted with extract_quote
+ * @brief Free a quote that was extracted with echeck_extract_quote
  *
- * @param quote Quote pointer returned by extract_quote
+ * @param quote Quote pointer returned by echeck_extract_quote
  */
-ECHECK_API void free_quote(echeck_quote_t *quote);
+ECHECK_API void echeck_free_quote(echeck_quote_t *quote);
 
 /**
  * @brief Get information from a quote
@@ -116,17 +116,17 @@ ECHECK_API void free_quote(echeck_quote_t *quote);
  * @param info Pointer to info structure to fill
  * @return 1 on success, 0 on failure
  */
-ECHECK_API int get_quote_info(echeck_quote_t *quote, echeck_quote_info_t *info);
+ECHECK_API int echeck_get_quote_info(echeck_quote_t *quote, echeck_quote_info_t *info);
 
 /**
  * @brief Verify an SGX quote against its certificate
- * 
+ *
  * @param cert Certificate pointer
  * @param quote Quote handle
  * @param result Verification result structure
  * @return 1 on success, 0 on failure
  */
-ECHECK_API int verify_quote(void *cert, echeck_quote_t *quote, echeck_verification_result_t *result);
+ECHECK_API int echeck_verify_quote(void *cert, echeck_quote_t *quote, echeck_verification_result_t *result);
 
 /**
  * @brief Verify a quote against expected MRENCLAVE and MRSIGNER values
@@ -136,14 +136,14 @@ ECHECK_API int verify_quote(void *cert, echeck_quote_t *quote, echeck_verificati
  * @param expected_mrsigner Expected MRSIGNER value (32 bytes), NULL to skip check
  * @return 1 if the values match (or were NULL), 0 otherwise
  */
-ECHECK_API int verify_quote_measurements(echeck_quote_t *quote, const uint8_t *expected_mrenclave, const uint8_t *expected_mrsigner);
+ECHECK_API int echeck_verify_quote_measurements(echeck_quote_t *quote, const uint8_t *expected_mrenclave, const uint8_t *expected_mrsigner);
 
 /**
  * @brief Set global verbose mode
  *
  * @param verbose 1 to enable verbose mode, 0 to disable
  */
-ECHECK_API void set_verbose_mode(int verbose);
+ECHECK_API void echeck_set_verbose_mode(int verbose);
 
 #ifdef __cplusplus
 }

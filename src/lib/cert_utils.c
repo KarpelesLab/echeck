@@ -3,7 +3,7 @@
 #include <stdlib.h>
 
 /* Load a certificate from a PEM file */
-void *load_certificate(const char *file_path) {
+void *echeck_load_certificate(const char *file_path) {
     BIO *bio = NULL;
     X509 *cert = NULL;
 
@@ -17,7 +17,7 @@ void *load_certificate(const char *file_path) {
     }
 
     /* Read PEM formatted certificate */
-    
+
     cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
     if (!cert) {
         fprintf(stderr, "ERROR: Failed to read X509 certificate from BIO\n");
@@ -25,11 +25,11 @@ void *load_certificate(const char *file_path) {
         BIO_free(bio);
         return NULL;
     }
-    
-    
+
+
     /* Free the BIO */
     BIO_free(bio);
-    
+
     return cert;
 }
 

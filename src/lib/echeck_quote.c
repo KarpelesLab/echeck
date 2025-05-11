@@ -54,7 +54,7 @@ void echeck_quote_free(echeck_quote_t *quote) {
  * Public API implementation
  */
 
-ECHECK_API echeck_quote_t* extract_quote(void *cert) {
+ECHECK_API echeck_quote_t* echeck_extract_quote(void *cert) {
     if (!cert) {
         return NULL;
     }
@@ -72,18 +72,18 @@ ECHECK_API echeck_quote_t* extract_quote(void *cert) {
 
     /* Create a new quote structure */
     echeck_quote_t *quote = echeck_quote_create(buffer.data, buffer.length);
-    
+
     /* Free the temporary buffer */
     free(buffer.data);
 
     return quote;
 }
 
-ECHECK_API void free_quote(echeck_quote_t *quote) {
+ECHECK_API void echeck_free_quote(echeck_quote_t *quote) {
     echeck_quote_free(quote);
 }
 
-ECHECK_API int get_quote_info(echeck_quote_t *quote, echeck_quote_info_t *info) {
+ECHECK_API int echeck_get_quote_info(echeck_quote_t *quote, echeck_quote_info_t *info) {
     if (!quote || !info) {
         return 0;
     }
@@ -97,8 +97,8 @@ ECHECK_API int get_quote_info(echeck_quote_t *quote, echeck_quote_info_t *info) 
     return 1;
 }
 
-ECHECK_API int verify_quote_measurements(echeck_quote_t *quote, 
-                                        const uint8_t *expected_mrenclave, 
+ECHECK_API int echeck_verify_quote_measurements(echeck_quote_t *quote,
+                                        const uint8_t *expected_mrenclave,
                                         const uint8_t *expected_mrsigner) {
     if (!quote || (!expected_mrenclave && !expected_mrsigner)) {
         return 0;
@@ -121,13 +121,13 @@ ECHECK_API int verify_quote_measurements(echeck_quote_t *quote,
     return 1;
 }
 
-ECHECK_API void free_certificate(void *cert) {
+ECHECK_API void echeck_free_certificate(void *cert) {
     if (cert) {
         X509_free((X509*)cert);
     }
 }
 
-ECHECK_API int verify_quote(void *cert_ptr, echeck_quote_t *quote, echeck_verification_result_t *result) {
+ECHECK_API int echeck_verify_quote(void *cert_ptr, echeck_quote_t *quote, echeck_verification_result_t *result) {
     if (!cert_ptr || !quote || !result) {
         return 0;
     }

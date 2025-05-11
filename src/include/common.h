@@ -6,19 +6,8 @@
 #include <string.h>
 #include <stdint.h>
 
-/* Include OpenSSL headers based on the build mode */
-#ifdef OPENSSL_RUNTIME_LINK
-#include "openssl_runtime.h"
-#else
-#include <openssl/bio.h>
-#include <openssl/pem.h>
-#include <openssl/x509.h>
-#include <openssl/x509v3.h>
-#include <openssl/sha.h>
-#include <openssl/evp.h>
-#include <openssl/ecdsa.h>
-#include <openssl/err.h>
-#endif
+/* Include centralized OpenSSL header */
+#include "echeck_openssl.h"
 
 /* Global flags for controlling output */
 extern int global_verbose_flag;
