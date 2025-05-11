@@ -4,18 +4,10 @@
 #include "sgx_quote_parser.h"
 #include "sgx_quote_verify.h"
 #include "sgx_cert_verify.h"
+#include "ca.h"  /* For get_trusted_ca_stack() */
 #include <stdlib.h>
 #include <string.h>
 /* Don't include direct OpenSSL headers when we have runtime loading */
-
-/* External functions that we use */
-extern int verify_report_data(const sgx_quote_t *quote, const unsigned char *pubkey_hash, unsigned int pubkey_hash_len);
-extern int verify_sgx_quote(const unsigned char *quote_data, int quote_len, echeck_verification_result_t *result);
-extern STACK_OF(X509)* get_trusted_ca_stack(void);
-extern int extract_pck_cert_chain(const sgx_quote_t *quote, sgx_cert_verification_result_t *result);
-extern int verify_pck_cert_chain_internal(sgx_cert_verification_result_t *result, STACK_OF(X509) *trusted_ca);
-extern int verify_attestation_key_internal(const sgx_quote_t *quote, sgx_cert_verification_result_t *result);
-extern void free_cert_verification_result(sgx_cert_verification_result_t *result);
 
 /**
  * Create a new quote structure from raw data
