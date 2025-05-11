@@ -272,16 +272,6 @@ int verify_report_data(const sgx_quote_t *quote, const unsigned char *pubkey_has
     }
 
     /* Verify remaining bytes are zeros (padding) */
-    if (is_verbose_mode()) {
-        fprintf(stderr, "Checking report_data padding (bytes 32-63):\n");
-        for (int i = SHA256_DIGEST_LENGTH; i < sizeof(sgx_report_data_t); i += 8) {
-            fprintf(stderr, "  Bytes %2d-%2d: ", i, i+7 < sizeof(sgx_report_data_t) ? i+7 : sizeof(sgx_report_data_t)-1);
-            for (int j = 0; j < 8 && i+j < sizeof(sgx_report_data_t); j++) {
-                fprintf(stderr, "%02x ", quote->report_body.report_data[i+j]);
-            }
-            fprintf(stderr, "\n");
-        }
-    }
 
     /* Check for non-zero padding bytes */
     for (int i = SHA256_DIGEST_LENGTH; i < sizeof(sgx_report_data_t); i++) {

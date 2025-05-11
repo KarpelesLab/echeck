@@ -13,7 +13,10 @@
 #include <stddef.h>
 
 /* Prevent OpenSSL headers from being included during runtime linking */
-#define OPENSSL_INCLUDED
+#define OPENSSL_INCLUDED 1
+#define OPENSSL_NO_DEPRECATED 1
+
+/* Define all OpenSSL header guards to prevent inclusion */
 #define HEADER_BIO_H
 #define HEADER_X509_H
 #define HEADER_EVP_H
@@ -26,6 +29,16 @@
 #define HEADER_CRYPTO_H
 #define HEADER_SAFESTACK_H
 #define HEADER_STACK_H
+#define HEADER_SHA_H
+#define HEADER_X509V3_H
+#define HEADER_OPENSSLV_H
+#define HEADER_OPENSSLCONF_H
+
+/* Windows-specific header guards */
+#if defined(_WIN32) || defined(_WIN64)
+#define HEADER_APPLINK_C
+#define OPENSSL_NO_FILENAMES
+#endif
 
 /* OpenSSL constants needed for the code */
 #define SHA256_DIGEST_LENGTH 32
@@ -229,10 +242,10 @@ extern void (*ERR_free_strings)(void);
 extern void (*OPENSSL_cleanup)(void);  /* Modern equivalent of EVP_cleanup() + ERR_free_strings() */
 
 /* Load OpenSSL dynamically at runtime */
-int init_openssl_runtime(void);
+extern int init_openssl_runtime(void);
 
 /* Clean up and unload OpenSSL libraries */
-void cleanup_openssl_runtime(void);
+extern void cleanup_openssl_runtime(void);
 
 #else /* !OPENSSL_RUNTIME_LINK */
 
