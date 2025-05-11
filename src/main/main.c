@@ -13,7 +13,8 @@
 #include <getopt.h>
 #endif
 
-#include <openssl/sha.h>
+/* Include centralized OpenSSL header for SHA constants and functions */
+#include "echeck_openssl.h"
 
 #include "echeck.h"
 

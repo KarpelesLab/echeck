@@ -12,18 +12,8 @@
 #include "echeck.h"
 #include "echeck_quote.h"
 
-/* OpenSSL headers */
-#ifdef OPENSSL_RUNTIME_LINK
-#include "openssl_runtime.h"
-#else
-#include <openssl/bio.h>
-#include <openssl/pem.h>
-#include <openssl/x509.h>
-#include <openssl/x509v3.h>
-#include <openssl/sha.h>
-#include <openssl/evp.h>
-#include <openssl/ecdsa.h>
-#endif
+/* Include centralized OpenSSL header */
+#include "echeck_openssl.h"
 
 /* Internal functions from ca.c */
 STACK_OF(X509)* get_trusted_ca_certificates(void);

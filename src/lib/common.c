@@ -4,10 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Include OpenSSL headers in non-runtime mode */
-#ifndef OPENSSL_RUNTIME_LINK
-#include <openssl/err.h>
-#endif
+/* echeck_internal.h already includes our centralized OpenSSL header */
 
 /* Initialize global verbose flag */
 static int global_verbose_flag = 0;
