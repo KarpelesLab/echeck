@@ -9,11 +9,38 @@ This tool and library are designed to:
 1. Load X.509 certificates that contain SGX quotes
 2. Extract the SGX quote extension (OID 1.3.6.1.4.1.311.105.1)
 3. Parse and display key fields from the quote
-4. Perform full validation of the quote, including:
-   - Signature verification
-   - Certificate chain verification
-   - Attestation key verification
-   - MRENCLAVE/MRSIGNER validation
+4. **Perform complete chain of trust verification**, including:
+   - TLS certificate → SGX enclave (via public key hash in report data)
+   - SGX enclave → Intel attestation service (via quote signature)
+   - Intel attestation service → trusted root CAs (via certificate chain)
+
+### Complete Chain of Trust Verification
+
+The primary feature of this library is its comprehensive verification of the entire trust chain:
+
+```
+TLS Certificate ⟶ SGX Enclave ⟶ Intel Attestation Service ⟶ Trusted CA Roots
+        │                │                   │                      │
+        │                │                   │                      │
+ Public Key Hash  ┌─────────────┐     Quote Signature      Certificate Chain
+ matches Report   │ Genuine SGX │      verification         verification
+     Data         │   Enclave   │                                │
+        │         └─────────────┘                                │
+        └───────────────┬─────────────────────────────────────────
+                        │
+                    VALIDATED
+                  SECURE CHANNEL
+```
+
+This **end-to-end verification** ensures:
+
+1. **TLS Certificate Trust**: The public key of the TLS certificate matches the hash in the SGX quote's report data, proving the enclave signed the certificate
+
+2. **Enclave Integrity**: The enclave's identity (MRENCLAVE/MRSIGNER) is verified and can be validated against expected values
+
+3. **Intel Attestation**: The quote is properly signed by Intel's Quoting Enclave (QE) using a valid attestation key
+
+4. **Root of Trust**: The complete certificate chain from the PCK certificates to Intel's trusted CA roots is verified
 
 ### SGX Attestation and TLS Connections
 
@@ -21,16 +48,10 @@ Intel SGX (Software Guard Extensions) provides a hardware-based trusted executio
 
 The remote attestation process involves:
 
-1. An enclave generates a report that includes its identity (MRENCLAVE, MRSIGNER)
+1. An enclave generates a report that includes its identity (MRENCLAVE, MRSIGNER) and hash of the TLS certificate's public key
 2. This report is signed by the Intel Quoting Enclave, creating a quote
-3. The quote can be embedded in an X.509 certificate extension
-4. The certificate can be used in a TLS connection
-
-This library enables verification of such certificates by:
-- Extracting the SGX quote from the certificate
-- Verifying the quote's signature against Intel's Certificate Chain
-- Confirming that the report data in the quote matches the certificate's public key
-- Validating MRENCLAVE/MRSIGNER values against expected values
+3. The quote is embedded in an X.509 certificate extension
+4. The certificate is used in a TLS connection
 
 By integrating this verification into a TLS handshake (see API examples below), you can establish a secure, attested connection to an SGX enclave, ensuring that you're communicating with a genuine and unmodified enclave within an SGX-enabled CPU.
 
@@ -444,12 +465,19 @@ The tool extracts and displays the following fields from SGX quotes:
 
 ## Features
 
-1. Full ECDSA signature verification for SGX quotes
-2. Certificate chain verification against the Intel SGX Root CA
-3. Validation of the attestation key against the PCK certificate
-4. Verification of certificate's public key hash against quote report data
-5. Built-in Intel SGX Root CA for certificate chain verification
-6. Unix-like command-line interface with support for:
+1. **Complete End-to-End Chain of Trust Verification**:
+   - TLS certificate to SGX enclave (via report data verification)
+   - SGX enclave to Intel attestation service (via signature verification)
+   - Intel attestation service to trusted CA roots (via certificate chain verification)
+
+2. **Comprehensive Security Validations**:
+   - Full ECDSA signature verification for SGX quotes
+   - Complete certificate chain verification against Intel SGX Root CA
+   - Rigorous validation of the attestation key against PCK certificates
+   - Cryptographic verification of certificate's public key hash against quote report data
+   - Built-in Intel SGX Root CA for certificate chain verification
+
+3. **Flexible Command-Line Interface**:
    - Verbose mode for detailed output
    - Quiet mode for scripting
    - Raw output mode for machine parsing
@@ -538,12 +566,16 @@ Extract information from an SGX quote into the provided structure.
 ### Verification Functions
 
 #### `int verify_quote(void *cert, echeck_quote_t *quote, echeck_verification_result_t *result)`
-Perform full verification of an SGX quote against its certificate, including signature verification, certificate chain verification, and attestation key verification.
+Perform full end-to-end chain of trust verification of an SGX quote against its certificate.
 - Parameters:
   - `cert`: Certificate handle
   - `quote`: Quote handle
   - `result`: Pointer to a structure that will be filled with verification results
 - Returns: 1 if the verification succeeded, 0 if it failed
+- **Chain of Trust Verified**:
+  1. TLS certificate → SGX enclave: Validates certificate's public key hash matches the quote's report data
+  2. SGX enclave → Intel attestation: Verifies quote's signature using the attestation key
+  3. Intel attestation → trusted CA roots: Validates the complete certificate chain
 
 #### `int verify_quote_measurements(echeck_quote_t *quote, const uint8_t *expected_mrenclave, const uint8_t *expected_mrsigner)`
 Verify the MRENCLAVE and/or MRSIGNER values of a quote against expected values.
@@ -576,6 +608,40 @@ Structure containing the results of quote verification.
   - `int cert_chain_valid`: Certificate chain validation result
   - `int checks_performed`: Number of checks performed
   - `int checks_passed`: Number of checks that passed
+
+## Verification Process Details
+
+The library implements a rigorous multi-step verification process to ensure the complete chain of trust. Here's what happens during `verify_quote()`:
+
+### 1. Report Data Verification
+- Computes SHA-256 hash of the TLS certificate's public key
+- Verifies this hash matches the first 32 bytes of the quote's report data
+- Ensures the enclave genuinely signed the TLS certificate's public key
+- If successful, establishes the link between TLS certificate and SGX enclave
+
+### 2. Quote Verification
+- Validates the quote's structure and format
+- Checks MRENCLAVE and MRSIGNER values are properly formed
+- Verifies all required fields in the quote structure
+
+### 3. Attestation Key Verification
+- Extracts the attestation public key from the quote
+- Verifies the quote's signature using this key
+- Validates the attestation key against the PCK certificate
+- Ensures the quote was genuinely signed by Intel's Quoting Enclave
+
+### 4. Certificate Chain Verification
+- Extracts the PCK certificate chain from the quote
+- Validates the complete chain against Intel's trusted CA roots
+- Verifies signatures, validity periods, and certificate purposes
+- Establishes root of trust back to Intel CA
+
+### 5. Final Validation
+- A quote is only considered valid when ALL verification steps pass
+- The `echeck_verification_result_t` structure provides detailed results for each verification step
+- Additional MRENCLAVE/MRSIGNER validation can be performed against expected values
+
+This comprehensive verification ensures a secure and trusted connection from your application directly to the genuine SGX enclave, with cryptographic guarantees at every step of the chain.
 
 ## Future Enhancements
 
