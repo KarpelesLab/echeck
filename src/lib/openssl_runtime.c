@@ -125,14 +125,7 @@ static void *libcrypto_handle = NULL;
         } \
     } while(0)
 
-/* Version of LOAD_SYMBOL that does not fail if the symbol is not found */
-#define LOAD_SYMBOL_OPTIONAL(handle, symbol) \
-    do { \
-        *(void **)(&symbol) = (void *)GetProcAddress(handle, #symbol); \
-        if (!symbol && is_verbose_mode()) { \
-            fprintf(stderr, "Warning: Optional symbol %s not found, functionality may be limited\n", #symbol); \
-        } \
-    } while(0)
+/* All symbols are required */
 #else
 /* Unix implementation using dlsym */
 #define LOAD_SYMBOL(handle, symbol) \
@@ -144,14 +137,7 @@ static void *libcrypto_handle = NULL;
         } \
     } while(0)
 
-/* Version of LOAD_SYMBOL that does not fail if the symbol is not found */
-#define LOAD_SYMBOL_OPTIONAL(handle, symbol) \
-    do { \
-        *(void **)(&symbol) = dlsym(handle, #symbol); \
-        if (!symbol && is_verbose_mode()) { \
-            fprintf(stderr, "Warning: Optional symbol %s not found, functionality may be limited\n", #symbol); \
-        } \
-    } while(0)
+/* All symbols are required */
 #endif
 
 /* Library name configuration based on platform */
@@ -430,10 +416,9 @@ int init_openssl_runtime(void) {
     /* ERR_GET_LIB and ERR_GET_REASON are macros, not functions to load 
      * We've defined our own macros above that operate directly on error codes */
     
-    /* In OpenSSL 3.0+, the initialization/cleanup functions are deprecated 
-     * Only OPENSSL_cleanup might exist, though it's typically not needed 
-     * as cleanup happens automatically */
-    LOAD_SYMBOL_OPTIONAL(libcrypto_handle, OPENSSL_cleanup);
+    /* In OpenSSL 3.0+, the initialization/cleanup functions are deprecated
+     * OPENSSL_cleanup is required for cleanup operations */
+    LOAD_SYMBOL(libcrypto_handle, OPENSSL_cleanup);
     
     /* Successfully loaded all required symbols */
     if (is_verbose_mode()) {
