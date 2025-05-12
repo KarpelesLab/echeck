@@ -310,9 +310,13 @@ jobs:
         if ($zipFile) {
           Expand-Archive -Path $zipFile.FullName -DestinationPath "openssl-arm64"
           $opensslDir = Get-ChildItem -Path "openssl-arm64" -Directory | Select-Object -First 1
-          $opensslPath = Join-Path (Get-Location) $opensslDir.FullName
+          $opensslPath = $opensslDir.FullName  # Use the full path without Join-Path
 
           Write-Host "Extracted OpenSSL to: $opensslPath"
+
+          # List the directory structure to debug
+          Write-Host "Listing OpenSSL directory structure:"
+          Get-ChildItem -Path "$opensslPath" -Recurse | Select-Object FullName | ForEach-Object { $_.FullName }
         } else {
           # Fallback to the pre-installed OpenSSL if download fails
           Write-Host "Download failed, falling back to installed OpenSSL..."
