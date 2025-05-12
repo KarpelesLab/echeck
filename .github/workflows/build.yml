@@ -386,25 +386,27 @@ jobs:
       run: |
         cd build
 
-        # For ARM64 runtime builds, add diagnostic tracing to see which DLLs are loaded
-        if ("${{ matrix.link-type }}" -eq "Runtime") {
-          # Copy the Release binaries to a test directory
-          New-Item -ItemType Directory -Force -Path test
-          Copy-Item "Release/echeck.exe" -Destination "test/"
+        # Copy OpenSSL DLLs to the Release directory for tests
+        Write-Host "Copying OpenSSL ARM64 DLLs to Release directory for tests"
+        if (Test-Path "$env:OPENSSL_ROOT_DIR/bin/libssl-3-arm64.dll") {
+          Copy-Item "$env:OPENSSL_ROOT_DIR/bin/libssl-3-arm64.dll" -Destination "Release/"
+          Copy-Item "$env:OPENSSL_ROOT_DIR/bin/libcrypto-3-arm64.dll" -Destination "Release/"
 
-          # List available OpenSSL DLLs
-          Write-Host "Available OpenSSL DLLs:"
-          Get-ChildItem -Path "C:/Program Files" -Recurse -Include *ssl*.dll, *crypto*.dll -ErrorAction SilentlyContinue | Select-Object -First 20 | ForEach-Object { $_.FullName }
+          # List DLLs in Release directory
+          Write-Host "DLLs in Release directory:"
+          Get-ChildItem -Path "Release" -Include *.dll | ForEach-Object { $_.FullName }
+        } else {
+          Write-Host "ERROR: Required OpenSSL ARM64 DLLs not found for tests!"
+          Write-Host "Searched in: $env:OPENSSL_ROOT_DIR/bin/"
+          Get-ChildItem -Path "$env:OPENSSL_ROOT_DIR" -Recurse -Include *.dll | Select-Object -First 20 | ForEach-Object { $_.FullName }
+        }
 
-          # Run the test program - output will show which DLLs are loaded at runtime
-          Write-Host "Running test program manually to see DLL loading:"
-          cd test
-          try {
-            ./echeck.exe --version
-          } catch {
-            Write-Host "Error running test program: $_"
-          }
-          cd ..
+        # Test program to verify DLL loading
+        Write-Host "Testing binary with OpenSSL DLLs:"
+        try {
+          & "./Release/echeck.exe" --help
+        } catch {
+          Write-Host "Error running test program: $_"
         }
 
         # Run the actual tests
