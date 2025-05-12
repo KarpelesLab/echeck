@@ -13,7 +13,7 @@ jobs:
     
     env:
       OPENSSL_VERSION: 3.5.0
-      INSTALL_DIR: ${{ runner.temp }}/openssl-install
+      INSTALL_DIR: ${{ github.workspace }}\openssl-install
       
     steps:
     - uses: actions/checkout@v4
