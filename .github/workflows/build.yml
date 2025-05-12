@@ -297,8 +297,11 @@ jobs:
         New-Item -ItemType Directory -Force -Path "openssl-arm64"
 
         # Download the latest successful artifact from our other workflow
-        # You can alternatively use the GitHub API to get the latest run ID
-        gh auth login --with-token < ${{ github.token }}
+        # Set GitHub token as an environment variable for gh CLI
+        $env:GH_TOKEN = "${{ secrets.GITHUB_TOKEN }}"
+
+        # Download using GitHub CLI
+        Write-Host "Downloading OpenSSL ARM64 artifact using GitHub CLI..."
         gh run download --repo ${{ github.repository }} --name openssl-3.5.0-windows-arm64 --dir openssl-arm64-temp
 
         # Extract the artifact
