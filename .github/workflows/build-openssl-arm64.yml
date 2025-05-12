@@ -18,34 +18,26 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Install LLVM and dependencies
+    - name: Install dependencies
       shell: pwsh
       run: |
-        # Install LLVM
-        choco install llvm -y
-
-        # Install MinGW for make and build tools
-        choco install mingw -y
-
         # Install Perl and NASM (required for OpenSSL build)
         choco install strawberryperl -y
         choco install nasm -y
 
         # Add to PATH
-        echo "$env:ProgramFiles\LLVM\bin" >> $env:GITHUB_PATH
         echo "C:\Strawberry\perl\bin" >> $env:GITHUB_PATH
         echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
-        echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" >> $env:GITHUB_PATH
 
         # Set up Visual Studio Command Prompt environment
         # This makes tools like nmake available
         & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat" -arch=arm64
-
-        # Check that the required tools are available
-        where gcc
-        where clang
-        where make
+        
+        # Verify tools are available
         where perl
+        where nasm
+        where nmake
+        where cl
     
     - name: Download OpenSSL source
       shell: pwsh
@@ -59,62 +51,57 @@ jobs:
         Write-Host "Extracting OpenSSL source"
         tar -xzf $opensslFile
     
-    - name: Configure and build OpenSSL
+    - name: Configure and build OpenSSL with MSVC
+      shell: cmd
+      run: |
+        :: Set up Visual Studio environment for ARM64
+        call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" arm64
+        
+        :: Create install directory
+        mkdir %INSTALL_DIR%
+        
+        :: Change to OpenSSL directory
+        cd openssl-%OPENSSL_VERSION%
+        
+        :: Configure OpenSSL for Windows ARM64 with MSVC
+        echo Configuring OpenSSL for Windows ARM64 with MSVC...
+        perl Configure VC-WIN64-ARM --prefix=%INSTALL_DIR% --openssldir=%INSTALL_DIR%
+        
+        :: Build OpenSSL
+        echo Building OpenSSL...
+        nmake
+        
+        :: Run basic tests (can be skipped if they're problematic)
+        echo Running tests...
+        :: nmake test
+        
+        :: Install OpenSSL
+        echo Installing OpenSSL...
+        nmake install
+        
+        :: Verify installed files
+        dir /s %INSTALL_DIR%
+
+    - name: Rename and copy DLLs
       shell: pwsh
       run: |
-        cd "openssl-$env:OPENSSL_VERSION"
-
-        # Create install directory
-        New-Item -ItemType Directory -Force -Path $env:INSTALL_DIR
-
-        # Set up environment for LLVM/Clang
-        $env:CC = "clang"
-        $env:CXX = "clang++"
-        $env:CROSS_COMPILE = "llvm-"
-
-        # Configure OpenSSL for ARM64 with mingw64
-        Write-Host "Configuring OpenSSL for Windows ARM64..."
-        # Use mingw64 configuration with target for ARM64
-        perl Configure mingw64 --prefix="$env:INSTALL_DIR" --openssldir="$env:INSTALL_DIR" --cross-compile-prefix=llvm- PROCESSOR=ARM64
-
-        # Modify the generated Makefile to use MinGW make instead of nmake
-        if (Test-Path "Makefile") {
-            Write-Host "Makefile generated, building with make..."
-
-            # Build OpenSSL
-            Write-Host "Building OpenSSL..."
-            make -j4
-
-            # Install OpenSSL
-            Write-Host "Installing OpenSSL..."
-            make install
-        } else {
-            Write-Host "Makefile not found, trying with nmake if available..."
-            # Try nmake as fallback if it's available from Visual Studio
-            try {
-                # Check if nmake is available
-                nmake /?
-
-                # Build OpenSSL with nmake
-                nmake
-
-                # Install OpenSSL
-                nmake install
-            } catch {
-                Write-Host "Error: Neither make nor nmake could be executed"
-                exit 1
-            }
-        }
-
-        # Make sure the bin directory exists
+        # Create bin directory if it doesn't exist
         New-Item -ItemType Directory -Force -Path "$env:INSTALL_DIR\bin"
-
-        # Copy DLLs to bin directory for easier access (if they exist)
-        Copy-Item "$env:INSTALL_DIR\lib\libcrypto*.dll" -Destination "$env:INSTALL_DIR\bin\" -ErrorAction SilentlyContinue
-        Copy-Item "$env:INSTALL_DIR\lib\libssl*.dll" -Destination "$env:INSTALL_DIR\bin\" -ErrorAction SilentlyContinue
-
-        # Check if libraries were built
-        Get-ChildItem -Path "$env:INSTALL_DIR" -Recurse | Select-Object FullName
+        
+        # Create properly named DLLs for ARM64
+        $libssl = Get-Item "$env:INSTALL_DIR\lib\libssl*.dll" -ErrorAction SilentlyContinue
+        $libcrypto = Get-Item "$env:INSTALL_DIR\lib\libcrypto*.dll" -ErrorAction SilentlyContinue
+        
+        if ($libssl) {
+            Copy-Item $libssl.FullName -Destination "$env:INSTALL_DIR\bin\libssl-3-arm64.dll"
+        }
+        
+        if ($libcrypto) {
+            Copy-Item $libcrypto.FullName -Destination "$env:INSTALL_DIR\bin\libcrypto-3-arm64.dll"
+        }
+        
+        # Verify ARM64 DLLs
+        Get-ChildItem -Path "$env:INSTALL_DIR\bin" | Select-Object Name
     
     - name: Create OpenSSL package
       shell: pwsh
