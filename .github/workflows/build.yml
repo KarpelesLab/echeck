@@ -415,13 +415,47 @@ jobs:
             Write-Host "Listing contents of test directory:"
             Get-ChildItem -Path "../test" | ForEach-Object { $_.FullName }
 
-            # Try to manually run the test with the sample file
+            # Display the content of the test files
+            Write-Host "Content of sample.pem (first 20 lines):"
+            if (Test-Path "../test/sample.pem") {
+                Get-Content "../test/sample.pem" -TotalCount 20 | ForEach-Object { Write-Host $_ }
+            }
+
+            # Try to manually run the test with the sample file with more debugging options
             Write-Host "Manually running echeck with test sample:"
+
+            # Use the Windows built-in Dr. Watson debugger to capture a crash dump
+            $env:_NT_ALT_SYMBOL_PATH = "srv*c:\symbols*https://msdl.microsoft.com/download/symbols"
+
+            # Enable crash dumps
+            Write-Host "Setting up crash dump collection..."
+
+            # Check the OpenSSL link type in CMake cache
+            Write-Host "Checking CMake cache for OpenSSL configuration:"
+            if (Test-Path "CMakeCache.txt") {
+                Get-Content "CMakeCache.txt" | Select-String "OPENSSL" | ForEach-Object { Write-Host $_ }
+            }
+
+            # Check linked libraries
+            Write-Host "Examining linked libraries in echeck.exe:"
+            if (Get-Command dumpbin -ErrorAction SilentlyContinue) {
+                & dumpbin /DEPENDENTS ./Release/echeck.exe
+            } else {
+                Write-Host "dumpbin tool not available"
+            }
+
+            # Set error action preference to continue to capture more errors
+            $ErrorActionPreference = "Continue"
+
             try {
-                & "./Release/echeck.exe" "../test/sample.pem" -v
+                # Try to run with debugging
+                Write-Host "Running with verbose output:"
+                & "./Release/echeck.exe" "../test/sample.pem" -v 2>&1
                 Write-Host "Exit code: $LASTEXITCODE"
             } catch {
                 Write-Host "Error running echeck with test file: $_"
+                Write-Host "Exception details: $($_.Exception.GetType().FullName)"
+                Write-Host "Exception message: $($_.Exception.Message)"
             }
         }
 
