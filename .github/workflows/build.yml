@@ -409,6 +409,22 @@ jobs:
           Write-Host "Error running test program: $_"
         }
 
+        # For static build, try to run the sample manually first
+        if ("${{ matrix.link-type }}" -eq "Static") {
+            # List test files for debugging
+            Write-Host "Listing contents of test directory:"
+            Get-ChildItem -Path "../test" | ForEach-Object { $_.FullName }
+
+            # Try to manually run the test with the sample file
+            Write-Host "Manually running echeck with test sample:"
+            try {
+                & "./Release/echeck.exe" "../test/sample.pem" -v
+                Write-Host "Exit code: $LASTEXITCODE"
+            } catch {
+                Write-Host "Error running echeck with test file: $_"
+            }
+        }
+
         # Run the actual tests
         ctest -C Release --output-on-failure
 
