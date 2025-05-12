@@ -287,34 +287,68 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install OpenSSL
+    - name: Download and Install OpenSSL for ARM64
       shell: pwsh
       run: |
-        # For now, we still use x64 headers (compatible) but will use runtime loading
-        # In the future, we'll use custom-built ARM64 OpenSSL from our other workflow
+        # Download the custom-built OpenSSL ARM64 artifact
+        Write-Host "Downloading OpenSSL ARM64 artifact..."
 
-        # Check both possible installation paths
-        if (Test-Path "C:/Program Files/OpenSSL") {
-          $opensslPath = "C:/Program Files/OpenSSL"
-        } elseif (Test-Path "C:/Program Files/OpenSSL-Win64") {
-          $opensslPath = "C:/Program Files/OpenSSL-Win64"
+        # Create temp directory for OpenSSL
+        New-Item -ItemType Directory -Force -Path "openssl-arm64"
+
+        # Download the latest successful artifact from our other workflow
+        # You can alternatively use the GitHub API to get the latest run ID
+        gh auth login --with-token < ${{ github.token }}
+        gh run download --repo ${{ github.repository }} --name openssl-3.5.0-windows-arm64 --dir openssl-arm64-temp
+
+        # Extract the artifact
+        Write-Host "Extracting OpenSSL ARM64 artifact..."
+        $zipFile = Get-ChildItem -Path "openssl-arm64-temp" -Filter "*.zip" | Select-Object -First 1
+        if ($zipFile) {
+          Expand-Archive -Path $zipFile.FullName -DestinationPath "openssl-arm64"
+          $opensslDir = Get-ChildItem -Path "openssl-arm64" -Directory | Select-Object -First 1
+          $opensslPath = Join-Path (Get-Location) $opensslDir.FullName
+
+          Write-Host "Extracted OpenSSL to: $opensslPath"
         } else {
-          Write-Host "ERROR: Could not find OpenSSL installation directory!"
-          exit 1
+          # Fallback to the pre-installed OpenSSL if download fails
+          Write-Host "Download failed, falling back to installed OpenSSL..."
+          if (Test-Path "C:/Program Files/OpenSSL") {
+            $opensslPath = "C:/Program Files/OpenSSL"
+          } elseif (Test-Path "C:/Program Files/OpenSSL-Win64") {
+            $opensslPath = "C:/Program Files/OpenSSL-Win64"
+          } else {
+            Write-Host "ERROR: Could not find OpenSSL installation directory!"
+            exit 1
+          }
         }
 
+        # Verify that we have the necessary OpenSSL ARM64 DLLs
+        $libsslFound = Test-Path "$opensslPath/bin/libssl-3-arm64.dll"
+        $libcryptoFound = Test-Path "$opensslPath/bin/libcrypto-3-arm64.dll"
+
+        if (-not $libsslFound -or -not $libcryptoFound) {
+            Write-Host "ERROR: Required OpenSSL ARM64 DLLs not found!"
+            Write-Host "libssl-3-arm64.dll exists: $libsslFound"
+            Write-Host "libcrypto-3-arm64.dll exists: $libcryptoFound"
+            exit 1
+        }
+
+        # Set OpenSSL paths for CMake
         echo "OPENSSL_ROOT_DIR=$opensslPath" >> $env:GITHUB_ENV
         echo "OPENSSL_INCLUDE_DIR=$opensslPath/include" >> $env:GITHUB_ENV
 
+        # If we're using our custom ARM64 build, also set library paths for static builds
+        if ($zipFile) {
+          echo "OPENSSL_CRYPTO_LIBRARY=$opensslPath/lib/libcrypto.lib" >> $env:GITHUB_ENV
+          echo "OPENSSL_SSL_LIBRARY=$opensslPath/lib/libssl.lib" >> $env:GITHUB_ENV
+        }
+
         Write-Host "Using OpenSSL installation at: $opensslPath"
 
-        # Verify paths to ensure they exist
-        Get-ChildItem -Path "$opensslPath" -Recurse -Include *.dll, *.lib | Select-Object -First 10 | ForEach-Object { $_.FullName }
-
-        # TODO: Once we have our ARM64 OpenSSL build, we can use:
-        # - Download the OpenSSL ARM64 artifact
-        # - Set OPENSSL_ROOT_DIR to the extracted location
-        # - Set OPENSSL_CRYPTO_LIBRARY and OPENSSL_SSL_LIBRARY for static builds
+        # Verify OpenSSL installation by listing key files
+        Write-Host "Verifying OpenSSL installation:"
+        Get-ChildItem -Path "$opensslPath" -Recurse -Include *.dll, *.lib, *.h | Select-Object -First 20 | ForEach-Object { $_.FullName }
 
     - name: Configure CMake
       shell: pwsh
@@ -388,12 +422,13 @@ jobs:
         Copy-Item "README.md" -Destination "package/$ARTIFACT_NAME/" -ErrorAction SilentlyContinue
         Copy-Item "LICENSE*" -Destination "package/$ARTIFACT_NAME/" -ErrorAction SilentlyContinue
 
-        # Create OpenSSL DLLs directory for runtime use
+        # Create OpenSSL DLLs directory for runtime use and copy the ARM64 DLLs
         New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/bin/openssl"
 
-        # Create empty directory for OpenSSL ARM64 DLLs
-        # DLLs will be provided separately from our custom ARM64 OpenSSL build workflow
-        Write-Host "Creating empty directory for OpenSSL ARM64 DLLs"
+        # Copy OpenSSL ARM64 DLLs to the package
+        Write-Host "Copying OpenSSL ARM64 DLLs to package"
+        Copy-Item "$env:OPENSSL_ROOT_DIR/bin/libssl-3-arm64.dll" -Destination "package/$ARTIFACT_NAME/bin/openssl/"
+        Copy-Item "$env:OPENSSL_ROOT_DIR/bin/libcrypto-3-arm64.dll" -Destination "package/$ARTIFACT_NAME/bin/openssl/"
 
         # Create zip archive
         Compress-Archive -Path "package/$ARTIFACT_NAME" -DestinationPath "package/$ARTIFACT_NAME.zip"
