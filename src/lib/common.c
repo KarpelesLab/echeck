@@ -55,7 +55,7 @@ int echeck_initialize(void) {
 /* Error handling utility */
 void print_openssl_error(const char *msg) {
     /* Ensure OpenSSL is initialized */
-    if (!initialize_openssl()) {
+    if (!echeck_initialize()) {
         fprintf(stderr, "Cannot print OpenSSL error: OpenSSL not initialized\n");
         return;
     }
