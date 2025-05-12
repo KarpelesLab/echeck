@@ -444,12 +444,86 @@ jobs:
                 Write-Host "dumpbin tool not available"
             }
 
-            # Set error action preference to continue to capture more errors
+            # Create a simple test program to test OpenSSL linking
+            Write-Host "Creating basic OpenSSL test program..."
+
+            $testProgram = @"
+#include <stdio.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+
+int main() {
+    printf("OpenSSL test starting...\n");
+
+    /* Initialize OpenSSL */
+    OPENSSL_init_ssl(0, NULL);
+
+    /* Print OpenSSL version */
+    printf("OpenSSL version: %s\n", OpenSSL_version(OPENSSL_VERSION));
+
+    /* Try to create a simple SSL_CTX */
+    const SSL_METHOD *method = TLS_method();
+    if (!method) {
+        printf("Error getting TLS method\n");
+        return 1;
+    }
+    printf("TLS method created\n");
+
+    SSL_CTX *ctx = SSL_CTX_new(method);
+    if (!ctx) {
+        printf("Error creating SSL_CTX\n");
+        ERR_print_errors_fp(stderr);
+        return 1;
+    }
+    printf("SSL_CTX created successfully\n");
+
+    SSL_CTX_free(ctx);
+    printf("SSL_CTX freed\n");
+
+    printf("OpenSSL test completed successfully\n");
+    return 0;
+}
+"@
+
+            # Write the test program to a file
+            $testProgram | Out-File -FilePath "openssl_test.c" -Encoding ascii
+
+            # Compile the test program
+            Write-Host "Compiling OpenSSL test program..."
+            try {
+                $includes = "-I`"$env:OPENSSL_INCLUDE_DIR`""
+                $libs = "-L`"$env:OPENSSL_ROOT_DIR/lib`" -llibssl -llibcrypto"
+
+                # Show environment for debugging
+                Write-Host "Visual Studio environment:"
+                & cmd.exe /c "where cl.exe"
+
+                # Try to compile with cl.exe
+                & cmd.exe /c "cl.exe openssl_test.c $includes $libs -o openssl_test.exe"
+
+                if (Test-Path "openssl_test.exe") {
+                    Write-Host "Test program compiled successfully"
+                    # Copy OpenSSL DLLs to current directory
+                    Copy-Item "$env:OPENSSL_ROOT_DIR/bin/libssl-3-arm64.dll" -Destination "./"
+                    Copy-Item "$env:OPENSSL_ROOT_DIR/bin/libcrypto-3-arm64.dll" -Destination "./"
+
+                    # Run the test program
+                    Write-Host "Running OpenSSL test program:"
+                    & "./openssl_test.exe"
+                    Write-Host "Test program exit code: $LASTEXITCODE"
+                } else {
+                    Write-Host "Failed to compile test program"
+                }
+            } catch {
+                Write-Host "Error during test program compilation: $_"
+            }
+
+            # Now try the actual echeck program
             $ErrorActionPreference = "Continue"
 
             try {
                 # Try to run with debugging
-                Write-Host "Running with verbose output:"
+                Write-Host "Running echeck with verbose output:"
                 & "./Release/echeck.exe" "../test/sample.pem" -v 2>&1
                 Write-Host "Exit code: $LASTEXITCODE"
             } catch {
