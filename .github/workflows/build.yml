@@ -11,12 +11,18 @@ on:
 
 jobs:
   build-ubuntu:
-    name: Build on Ubuntu (${{ matrix.link-type }} OpenSSL)
-    runs-on: ubuntu-22.04
+    name: Build on Ubuntu ${{ matrix.arch }} (${{ matrix.link-type }} OpenSSL)
+    runs-on: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
+        arch: [x64, ARM64]
         link-type: [Linktime, Runtime]
+        include:
+          - arch: x64
+            runs-on: ubuntu-22.04
+          - arch: ARM64
+            runs-on: ubuntu-22.04-arm
     
     steps:
     - uses: actions/checkout@v4
@@ -49,7 +55,7 @@ jobs:
     - name: Create package
       run: |
         mkdir -p package
-        ARTIFACT_NAME="echeck-ubuntu-$(date +%Y%m%d)-${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}"
+        ARTIFACT_NAME="echeck-ubuntu-${{ matrix.arch }}-$(date +%Y%m%d)-${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}"
         mkdir -p "package/$ARTIFACT_NAME/bin"
         mkdir -p "package/$ARTIFACT_NAME/lib"
         mkdir -p "package/$ARTIFACT_NAME/include/echeck"
@@ -67,7 +73,7 @@ jobs:
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: echeck-ubuntu-${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}
+        name: echeck-ubuntu-${{ matrix.arch }}-${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}
         path: package/*.tar.gz
 
   build-macos:
