@@ -555,6 +555,9 @@ jobs:
 
                             Write-Host "==== STACK TRACE ===== (not shown because huge)"
                             & $cdbPath -z $dump.FullName -c "k ffff;q" | Out-File -FilePath "stack_trace.txt"
+                            
+                            Write-Host "==== UNIQUE STACK TRACE ====="
+                            & $cdbPath -z $dump.FullName -c "!uniqstack;q" | Tee-Object -FilePath "uniq_stack_trace.txt"
 
                             Write-Host "==== LOADED MODULES ====="
                             & $cdbPath -z $dump.FullName -c "lmv;q" | Tee-Object -FilePath "modules.txt"
@@ -624,6 +627,7 @@ jobs:
           build/*.txt
           build/ecxr_output.txt
           build/stack_trace.txt
+          build/uniq_stack_trace.txt
           build/modules.txt
           build/crash_analysis.txt
         if-no-files-found: ignore
