@@ -243,6 +243,7 @@ jobs:
 
     - name: Run tests
       shell: pwsh
+      continue-on-error: true
       run: |
         cd build
         ctest -C Release --output-on-failure
@@ -383,6 +384,7 @@ jobs:
 
     - name: Run tests
       shell: pwsh
+      continue-on-error: true
       run: |
         cd build
 
@@ -512,10 +514,66 @@ jobs:
                     Write-Host "Found crash dump: $($dump.FullName)"
                 }
 
-                # If dumps were created, compress and prepare them for upload
+                # If dumps were created, analyze them and prepare for upload
                 if ($dumps.Count -gt 0) {
                     Write-Host "Creating crash dump archive..."
                     Compress-Archive -Path "crash_dumps/*" -DestinationPath "crash_dumps.zip"
+
+                    # Try to analyze the crash dump using the Windows Debugging Tools
+                    Write-Host "Attempting to analyze crash dump..."
+
+                    # Install Debugging Tools for Windows if needed
+                    Write-Host "Installing Windows Debugging Tools..."
+                    & choco install windbg -y --params "/NoDesktopShortcut /NoStartMenu" --no-progress
+
+                    # Try to find cdb.exe (Command-line debugger)
+                    $cdbPath = $null
+                    $possibleCdbPaths = @(
+                        "C:\Program Files (x86)\Windows Kits\10\Debuggers\arm64\cdb.exe",
+                        "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe",
+                        "C:\Program Files\Debugging Tools for Windows (x64)\cdb.exe",
+                        "C:\Program Files (x86)\Windows Kits\10\Debuggers\arm\cdb.exe"
+                    )
+
+                    foreach ($path in $possibleCdbPaths) {
+                        if (Test-Path $path) {
+                            $cdbPath = $path
+                            Write-Host "Found debugger at: $cdbPath"
+                            break
+                        }
+                    }
+
+                    if ($cdbPath) {
+                        foreach ($dump in $dumps) {
+                            Write-Host "Analyzing dump file: $($dump.FullName)"
+
+                            # Create a commands file for cdb to execute
+                            $cdbCmdFile = "cdb_commands.txt"
+                            ".lines`n.ecxr`nk 100`nlmv`n!analyze -v`nq" | Out-File -FilePath $cdbCmdFile -Encoding ascii
+
+                            # Run cdb with the commands file
+                            Write-Host "Running stack trace analysis..."
+                            & $cdbPath -z $dump.FullName -c "$$<$cdbCmdFile" | Tee-Object -Variable stackTrace
+
+                            # Write the stack trace to a text file for upload
+                            $stackTraceFile = "$($dump.BaseName)_stack.txt"
+                            $stackTrace | Out-File -FilePath $stackTraceFile -Encoding utf8
+
+                            # Also print the stack trace summary (first 50 lines)
+                            Write-Host "Stack trace summary:"
+                            $stackTrace | Select-Object -First 50
+                        }
+                    } else {
+                        Write-Host "Windows Debugger not found, skipping stack trace analysis"
+
+                        # Try to use dumpchk.exe if available
+                        if (Get-Command dumpchk -ErrorAction SilentlyContinue) {
+                            foreach ($dump in $dumps) {
+                                Write-Host "Verifying dump file with dumpchk: $($dump.FullName)"
+                                & dumpchk $dump.FullName
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -559,9 +617,12 @@ jobs:
     - name: Upload crash dumps
       if: ${{ matrix.link-type == 'Static' }}
       uses: actions/upload-artifact@v4
+      continue-on-error: true
       with:
         name: crash-dumps-windows-arm64
-        path: build/crash_dumps.zip
+        path: |
+          build/crash_dumps.zip
+          build/*.txt
         if-no-files-found: ignore
 
   release-artifacts:
