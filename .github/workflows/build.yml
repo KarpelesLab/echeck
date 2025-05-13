@@ -381,6 +381,16 @@ jobs:
       run: |
         cd build
         cmake --build . --config Release
+        
+        # Set stack size limit to 131072 bytes (128KB) using editbin
+        Write-Host "Setting stack size to 131072 bytes to catch infinite recursion"
+        # Find editbin.exe location
+        $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+        $editbin = Get-ChildItem -Path "$vsPath\VC\Tools\MSVC" -Recurse -Filter "editbin.exe" | Where-Object { $_.FullName -like "*ARM64*" } | Select-Object -First 1
+        Write-Host "Using editbin: $($editbin.FullName)"
+        # Apply stack size limit to executable
+        & $editbin.FullName /STACK:131072 "Release\echeck.exe"
+        Write-Host "Stack size updated to 131072 bytes"
 
     - name: Run tests
       shell: pwsh
