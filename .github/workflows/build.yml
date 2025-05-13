@@ -49,7 +49,7 @@ jobs:
     - name: Create package
       run: |
         mkdir -p package
-        ARTIFACT_NAME="echeck-ubuntu-$(date +%Y%m%d)-${{ matrix.link-type == 'Runtime' && 'runtime' || 'static' }}"
+        ARTIFACT_NAME="echeck-ubuntu-$(date +%Y%m%d)-${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}"
         mkdir -p "package/$ARTIFACT_NAME/bin"
         mkdir -p "package/$ARTIFACT_NAME/lib"
         mkdir -p "package/$ARTIFACT_NAME/include/echeck"
@@ -67,7 +67,7 @@ jobs:
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: echeck-ubuntu-${{ matrix.link-type == 'Runtime' && 'runtime' || 'static' }}
+        name: echeck-ubuntu-${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}
         path: package/*.tar.gz
 
   build-macos:
@@ -114,7 +114,7 @@ jobs:
     - name: Create package
       run: |
         mkdir -p package
-        ARTIFACT_NAME="echeck-macos-$(date +%Y%m%d)-${{ matrix.link-type == 'Runtime' && 'runtime' || 'static' }}"
+        ARTIFACT_NAME="echeck-macos-$(date +%Y%m%d)-${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}"
         mkdir -p "package/$ARTIFACT_NAME/bin"
         mkdir -p "package/$ARTIFACT_NAME/lib"
         mkdir -p "package/$ARTIFACT_NAME/include/echeck"
@@ -132,7 +132,7 @@ jobs:
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: echeck-macos-${{ matrix.link-type == 'Runtime' && 'runtime' || 'static' }}
+        name: echeck-macos-${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}
         path: package/*.tar.gz
 
   build-windows:
@@ -252,7 +252,7 @@ jobs:
       shell: pwsh
       run: |
         $linkType = "${{ matrix.link-type }}"
-        $linkTypeLower = if ($linkType -eq "Runtime") { "runtime" } else { "static" }
+        $linkTypeLower = if ($linkType -eq "Runtime") { "runtime" } else { "linktime" }
         
         # Create artifact directory
         $ARTIFACT_NAME = "echeck-windows-x64-$(Get-Date -Format 'yyyyMMdd')-$linkTypeLower"
@@ -267,13 +267,45 @@ jobs:
         Copy-Item "README.md" -Destination "package/$ARTIFACT_NAME/" -ErrorAction SilentlyContinue
         Copy-Item "LICENSE*" -Destination "package/$ARTIFACT_NAME/" -ErrorAction SilentlyContinue
         
+        # Copy our DLL if it exists
+        if (Test-Path "build/Release/echeck.dll") {
+            Copy-Item "build/Release/echeck.dll" -Destination "package/$ARTIFACT_NAME/bin/"
+        }
+        
+        # Copy OpenSSL DLLs - needed at runtime regardless of link type
+        $opensslDir = $env:OPENSSL_ROOT_DIR
+        if (-not $opensslDir) {
+            # Determine from earlier installation
+            if (Test-Path "C:/Program Files/OpenSSL") {
+                $opensslDir = "C:/Program Files/OpenSSL"
+            } elseif (Test-Path "C:/Program Files/OpenSSL-Win64") {
+                $opensslDir = "C:/Program Files/OpenSSL-Win64"
+            } else {
+                Write-Host "ERROR: Could not find OpenSSL installation directory!"
+                exit 1
+            }
+        }
+        
+        # Copy OpenSSL DLLs to bin directory
+        Write-Host "Copying OpenSSL DLLs to bin directory from $opensslDir/bin"
+        $opensslDlls = Get-ChildItem -Path "$opensslDir/bin" -Filter "*.dll"
+        if (-not $opensslDlls) {
+            Write-Host "ERROR: OpenSSL DLLs not found in $opensslDir/bin!"
+            exit 1
+        }
+        
+        foreach ($dll in $opensslDlls) {
+            Copy-Item $dll.FullName -Destination "package/$ARTIFACT_NAME/bin/"
+            Write-Host "Copied $($dll.Name) to bin directory"
+        }
+        
         # Create zip archive
         Compress-Archive -Path "package/$ARTIFACT_NAME" -DestinationPath "package/$ARTIFACT_NAME.zip"
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: echeck-windows-x64-${{ matrix.link-type == 'Runtime' && 'runtime' || 'static' }}
+        name: echeck-windows-x64-${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}
         path: package/*.zip
         
   build-windows-arm64:
@@ -398,20 +430,37 @@ jobs:
       run: |
         cd build
 
-        # Copy OpenSSL DLLs to the Release directory for tests
+        # Copy OpenSSL ARM64 DLLs directly to the Release directory (same directory as executable)
         Write-Host "Copying OpenSSL ARM64 DLLs to Release directory for tests"
-        if (Test-Path "$env:OPENSSL_ROOT_DIR/bin/libssl-3-arm64.dll") {
-          Copy-Item "$env:OPENSSL_ROOT_DIR/bin/libssl-3-arm64.dll" -Destination "Release/"
-          Copy-Item "$env:OPENSSL_ROOT_DIR/bin/libcrypto-3-arm64.dll" -Destination "Release/"
-
-          # List DLLs in Release directory
-          Write-Host "DLLs in Release directory:"
-          Get-ChildItem -Path "Release" -Include *.dll | ForEach-Object { $_.FullName }
-        } else {
-          Write-Host "ERROR: Required OpenSSL ARM64 DLLs not found for tests!"
-          Write-Host "Searched in: $env:OPENSSL_ROOT_DIR/bin/"
-          Get-ChildItem -Path "$env:OPENSSL_ROOT_DIR" -Recurse -Include *.dll | Select-Object -First 20 | ForEach-Object { $_.FullName }
+        $opensslDir = $env:OPENSSL_ROOT_DIR
+        if (-not $opensslDir) {
+          Write-Host "ERROR: OPENSSL_ROOT_DIR environment variable not set!"
+          exit 1
         }
+
+        # Check for ARM64 DLL variants
+        $libssl = "$opensslDir/bin/libssl-3-arm64.dll"
+        $libcrypto = "$opensslDir/bin/libcrypto-3-arm64.dll"
+        
+        if (Test-Path $libssl) {
+          Copy-Item $libssl -Destination "Release/"
+          Write-Host "Copied libssl-3-arm64.dll to Release directory"
+        } else {
+          Write-Host "ERROR: libssl-3-arm64.dll not found at $libssl!"
+          exit 1
+        }
+        
+        if (Test-Path $libcrypto) {
+          Copy-Item $libcrypto -Destination "Release/"
+          Write-Host "Copied libcrypto-3-arm64.dll to Release directory"
+        } else {
+          Write-Host "ERROR: libcrypto-3-arm64.dll not found at $libcrypto!"
+          exit 1
+        }
+
+        # List DLLs in Release directory to verify
+        Write-Host "DLLs in Release directory:"
+        Get-ChildItem -Path "Release" -Include *.dll | ForEach-Object { $_.FullName }
 
         # Test program to verify DLL loading
         Write-Host "Testing binary with OpenSSL DLLs:"
@@ -594,7 +643,7 @@ jobs:
       shell: pwsh
       run: |
         $linkType = "${{ matrix.link-type }}"
-        $linkTypeLower = if ($linkType -eq "Runtime") { "runtime" } else { "static" }
+        $linkTypeLower = if ($linkType -eq "Runtime") { "runtime" } else { "linktime" }
 
         # Create artifact directory
         $ARTIFACT_NAME = "echeck-windows-arm64-$(Get-Date -Format 'yyyyMMdd')-$linkTypeLower"
@@ -609,13 +658,38 @@ jobs:
         Copy-Item "README.md" -Destination "package/$ARTIFACT_NAME/" -ErrorAction SilentlyContinue
         Copy-Item "LICENSE*" -Destination "package/$ARTIFACT_NAME/" -ErrorAction SilentlyContinue
 
-        # Create OpenSSL DLLs directory for runtime use and copy the ARM64 DLLs
-        New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/bin/openssl"
+        # Copy our DLL if it exists
+        if (Test-Path "build/Release/echeck.dll") {
+            Copy-Item "build/Release/echeck.dll" -Destination "package/$ARTIFACT_NAME/bin/"
+        }
 
-        # Copy OpenSSL ARM64 DLLs to the package
-        Write-Host "Copying OpenSSL ARM64 DLLs to package"
-        Copy-Item "$env:OPENSSL_ROOT_DIR/bin/libssl-3-arm64.dll" -Destination "package/$ARTIFACT_NAME/bin/openssl/"
-        Copy-Item "$env:OPENSSL_ROOT_DIR/bin/libcrypto-3-arm64.dll" -Destination "package/$ARTIFACT_NAME/bin/openssl/"
+        # Copy OpenSSL ARM64 DLLs to bin directory (not to a subdirectory)
+        Write-Host "Copying OpenSSL ARM64 DLLs to bin directory"
+        $opensslDir = $env:OPENSSL_ROOT_DIR
+        if (-not $opensslDir) {
+            Write-Host "ERROR: OPENSSL_ROOT_DIR environment variable not set!"
+            exit 1
+        }
+        
+        # Check for ARM64 DLL variants
+        $libssl = "$opensslDir/bin/libssl-3-arm64.dll"
+        $libcrypto = "$opensslDir/bin/libcrypto-3-arm64.dll"
+        
+        if (Test-Path $libssl) {
+            Copy-Item $libssl -Destination "package/$ARTIFACT_NAME/bin/"
+            Write-Host "Copied libssl-3-arm64.dll to bin directory"
+        } else {
+            Write-Host "ERROR: libssl-3-arm64.dll not found at $libssl!"
+            exit 1
+        }
+        
+        if (Test-Path $libcrypto) {
+            Copy-Item $libcrypto -Destination "package/$ARTIFACT_NAME/bin/"
+            Write-Host "Copied libcrypto-3-arm64.dll to bin directory"
+        } else {
+            Write-Host "ERROR: libcrypto-3-arm64.dll not found at $libcrypto!"
+            exit 1
+        }
 
         # Create zip archive
         Compress-Archive -Path "package/$ARTIFACT_NAME" -DestinationPath "package/$ARTIFACT_NAME.zip"
@@ -623,11 +697,11 @@ jobs:
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: echeck-windows-arm64-${{ matrix.link-type == 'Runtime' && 'runtime' || 'static' }}
+        name: echeck-windows-arm64-${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}
         path: package/*.zip
 
     - name: Upload crash dumps
-      if: ${{ matrix.link-type == 'Static' }}
+      if: ${{ matrix.link-type != 'Runtime' }}
       uses: actions/upload-artifact@v4
       continue-on-error: true
       with:
