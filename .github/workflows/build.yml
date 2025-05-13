@@ -553,25 +553,14 @@ jobs:
                             Write-Host "==== EXCEPTION CONTEXT ====="
                             & $cdbPath -z $dump.FullName -c ".ecxr;q" | Tee-Object -FilePath "ecxr_output.txt"
 
-                            Write-Host "==== STACK TRACE ====="
-                            & $cdbPath -z $dump.FullName -c "k 1000;q" | Tee-Object -FilePath "stack_trace.txt"
+                            Write-Host "==== STACK TRACE ===== (not shown because huge)"
+                            & $cdbPath -z $dump.FullName -c "k 100000;q" | Out-File -FilePath "stack_trace.txt"
 
                             Write-Host "==== LOADED MODULES ====="
                             & $cdbPath -z $dump.FullName -c "lmv;q" | Tee-Object -FilePath "modules.txt"
 
                             Write-Host "==== CRASH ANALYSIS ====="
                             & $cdbPath -z $dump.FullName -c "!analyze -v;q" | Tee-Object -FilePath "crash_analysis.txt"
-
-                            # Combine all outputs for the variable
-                            $stackTrace = Get-Content -Path "ecxr_output.txt", "stack_trace.txt", "modules.txt", "crash_analysis.txt" | Out-String
-
-                            # Write the stack trace to a text file for upload
-                            $stackTraceFile = "$($dump.BaseName)_stack.txt"
-                            $stackTrace | Out-File -FilePath $stackTraceFile -Encoding utf8
-
-                            # Also print the stack trace summary (first 50 lines)
-                            Write-Host "Stack trace summary:"
-                            $stackTrace | Select-Object -First 50
                         }
                     } else {
                         Write-Host "Windows Debugger not found, skipping stack trace analysis"
