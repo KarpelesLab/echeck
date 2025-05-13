@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        link-type: [Static, Runtime]
+        link-type: [Linktime, Runtime]
     
     steps:
     - uses: actions/checkout@v4
@@ -76,7 +76,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        link-type: [Static, Runtime]
+        link-type: [Linktime, Runtime]
     
     steps:
     - uses: actions/checkout@v4
@@ -141,7 +141,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        link-type: [Static, Runtime]
+        link-type: [Linktime, Runtime]
     
     steps:
     - uses: actions/checkout@v4
@@ -315,7 +315,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        link-type: [Static, Runtime]
+        link-type: [Linktime, Runtime]
 
     steps:
     - uses: actions/checkout@v4
@@ -378,7 +378,7 @@ jobs:
         echo "OPENSSL_ROOT_DIR=$opensslPath" >> $env:GITHUB_ENV
         echo "OPENSSL_INCLUDE_DIR=$opensslPath/include" >> $env:GITHUB_ENV
 
-        # If we're using our custom ARM64 build, also set library paths for static builds
+        # If we're using our custom ARM64 build, also set library paths for linktime builds
         if ($zipFile) {
           echo "OPENSSL_CRYPTO_LIBRARY=$opensslPath/lib/libcrypto.lib" >> $env:GITHUB_ENV
           echo "OPENSSL_SSL_LIBRARY=$opensslPath/lib/libssl.lib" >> $env:GITHUB_ENV
@@ -395,13 +395,13 @@ jobs:
       run: |
         New-Item -ItemType Directory -Force -Path build
         cd build
-        # Use the link-type matrix variable to decide between static and runtime
+        # Use the link-type matrix variable to decide between linktime and runtime
         if ("${{ matrix.link-type }}" -eq "Runtime") {
           cmake -G "Visual Studio 17 2022" -A ARM64 -DOPENSSL_RUNTIME_LINK=ON `
             -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
             -DOPENSSL_INCLUDE_DIR="$env:OPENSSL_INCLUDE_DIR" ..
         } else {
-          # For static mode, we still need to use runtime OpenSSL on ARM64 for now,
+          # For linktime mode, we still need to use runtime OpenSSL on ARM64 for now,
           # but we don't define OPENSSL_RUNTIME_LINK so it links with stubs
           cmake -G "Visual Studio 17 2022" -A ARM64 `
             -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
@@ -470,8 +470,8 @@ jobs:
           Write-Host "Error running test program: $_"
         }
 
-        # For static build, try to run the sample manually first
-        if ("${{ matrix.link-type }}" -eq "Static") {
+        # For linktime build, try to run the sample manually first
+        if ("${{ matrix.link-type }}" -eq "Linktime") {
             # List test files for debugging
             Write-Host "Listing contents of test directory:"
             Get-ChildItem -Path "../test" | ForEach-Object { $_.FullName }
@@ -565,7 +565,7 @@ jobs:
         ctest -C Release --output-on-failure
 
         # If we have crash dumps, upload them as artifacts
-        if ("${{ matrix.link-type }}" -eq "Static") {
+        if ("${{ matrix.link-type }}" -eq "Linktime") {
             if (Test-Path "crash_dumps") {
                 Write-Host "Checking for crash dumps..."
                 $dumps = Get-ChildItem -Path "crash_dumps" -Filter "*.dmp"
