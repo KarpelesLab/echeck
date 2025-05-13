@@ -85,26 +85,6 @@ jobs:
         :: Verify installed files
         dir /s "%INSTALL_DIR%"
 
-    - name: Rename and copy DLLs
-      shell: pwsh
-      run: |
-        # Create bin directory if it doesn't exist
-        New-Item -ItemType Directory -Force -Path "$env:INSTALL_DIR\bin"
-        
-        # Create properly named DLLs for ARM64
-        $libssl = Get-Item "$env:INSTALL_DIR\lib\libssl*.dll" -ErrorAction SilentlyContinue
-        $libcrypto = Get-Item "$env:INSTALL_DIR\lib\libcrypto*.dll" -ErrorAction SilentlyContinue
-        
-        if ($libssl) {
-            Copy-Item $libssl.FullName -Destination "$env:INSTALL_DIR\bin\libssl-3-arm64.dll"
-        }
-        
-        if ($libcrypto) {
-            Copy-Item $libcrypto.FullName -Destination "$env:INSTALL_DIR\bin\libcrypto-3-arm64.dll"
-        }
-        
-        # Verify ARM64 DLLs
-        Get-ChildItem -Path "$env:INSTALL_DIR\bin" | Select-Object Name
     
     - name: Create OpenSSL package
       shell: pwsh
