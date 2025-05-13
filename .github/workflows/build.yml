@@ -547,13 +547,23 @@ jobs:
                         foreach ($dump in $dumps) {
                             Write-Host "Analyzing dump file: $($dump.FullName)"
 
-                            # Create a commands file for cdb to execute
-                            $cdbCmdFile = "cdb_commands.txt"
-                            ".lines`n.ecxr`nk 100`nlmv`n!analyze -v`nq" | Out-File -FilePath $cdbCmdFile -Encoding ascii
-
-                            # Run cdb with the commands file
+                            # Run cdb with direct commands
                             Write-Host "Running stack trace analysis..."
-                            & $cdbPath -z $dump.FullName -c "$$<$cdbCmdFile" | Tee-Object -Variable stackTrace
+                            # Run each command separately to ensure reliable output
+                            Write-Host "==== EXCEPTION CONTEXT ====="
+                            & $cdbPath -z $dump.FullName -c ".ecxr;q" | Tee-Object -FilePath "ecxr_output.txt"
+
+                            Write-Host "==== STACK TRACE ====="
+                            & $cdbPath -z $dump.FullName -c "k 100;q" | Tee-Object -FilePath "stack_trace.txt"
+
+                            Write-Host "==== LOADED MODULES ====="
+                            & $cdbPath -z $dump.FullName -c "lmv;q" | Tee-Object -FilePath "modules.txt"
+
+                            Write-Host "==== CRASH ANALYSIS ====="
+                            & $cdbPath -z $dump.FullName -c "!analyze -v;q" | Tee-Object -FilePath "crash_analysis.txt"
+
+                            # Combine all outputs for the variable
+                            $stackTrace = Get-Content -Path "ecxr_output.txt", "stack_trace.txt", "modules.txt", "crash_analysis.txt" | Out-String
 
                             # Write the stack trace to a text file for upload
                             $stackTraceFile = "$($dump.BaseName)_stack.txt"
@@ -623,6 +633,10 @@ jobs:
         path: |
           build/crash_dumps.zip
           build/*.txt
+          build/ecxr_output.txt
+          build/stack_trace.txt
+          build/modules.txt
+          build/crash_analysis.txt
         if-no-files-found: ignore
 
   release-artifacts:
