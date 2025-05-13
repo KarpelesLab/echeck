@@ -554,7 +554,7 @@ jobs:
                             & $cdbPath -z $dump.FullName -c ".ecxr;q" | Tee-Object -FilePath "ecxr_output.txt"
 
                             Write-Host "==== STACK TRACE ====="
-                            & $cdbPath -z $dump.FullName -c "k 100;q" | Tee-Object -FilePath "stack_trace.txt"
+                            & $cdbPath -z $dump.FullName -c "k 1000;q" | Tee-Object -FilePath "stack_trace.txt"
 
                             Write-Host "==== LOADED MODULES ====="
                             & $cdbPath -z $dump.FullName -c "lmv;q" | Tee-Object -FilePath "modules.txt"
