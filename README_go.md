@@ -69,23 +69,26 @@ func main() {
 
 ```go
 // Verify the quote against the certificate
-result, err := echeck.VerifyQuote(cert, quote)
+err = echeck.VerifyQuote(cert, quote)
 if err != nil {
-    log.Fatal(err)
+    // Check for specific error types
+    var reportErr echeck.ErrReportDataMismatch
+    var formatErr echeck.ErrInvalidQuoteFormat
+    var certErr echeck.ErrCertChainVerification
+    
+    if errors.As(err, &reportErr) {
+        fmt.Printf("Report data mismatch: %v\n", reportErr)
+    } else if errors.As(err, &formatErr) {
+        fmt.Printf("Invalid quote format: %v\n", formatErr)
+    } else if errors.As(err, &certErr) {
+        fmt.Printf("Certificate chain error: %v\n", certErr)
+    } else {
+        fmt.Printf("Verification failed: %v\n", err)
+    }
+    return
 }
 
-if result.Valid {
-    fmt.Println("Quote verification successful!")
-} else {
-    fmt.Printf("Quote verification failed: %s\n", result.ErrorMessage)
-}
-
-// Print detailed results
-fmt.Printf("Report data matches cert: %t\n", result.ReportDataMatchesCert)
-fmt.Printf("Quote format valid: %t\n", result.QuoteValid)
-fmt.Printf("Certificate chain valid: %t\n", result.CertChainValid)
-fmt.Printf("Checks performed: %d\n", result.ChecksPerformed)
-fmt.Printf("Checks passed: %d\n", result.ChecksPassed)
+fmt.Println("Quote verification successful!")
 ```
 
 ### Measurement Verification
@@ -154,15 +157,23 @@ Contains essential measurements extracted from an SGX quote:
 - `ISVSVN uint16` - ISV SVN (Security Version Number)
 - `ReportData [64]byte` - Report data from the quote
 
-#### `VerificationResult`
-Contains detailed verification results:
-- `Valid bool` - Overall validation result
-- `ErrorMessage string` - Error message if validation failed
-- `ReportDataMatchesCert bool` - Report data matches certificate public key hash
-- `QuoteValid bool` - Quote format and data validation
-- `CertChainValid bool` - Certificate chain validation result
-- `ChecksPerformed int` - Number of checks performed
-- `ChecksPassed int` - Number of checks that passed
+#### Error Types
+
+The library uses specific error types for different verification failures:
+
+**`ErrReportDataMismatch`**
+Indicates the report data doesn't match the certificate's public key hash:
+- `Expected []byte` - Expected hash value
+- `Actual []byte` - Actual report data
+
+**`ErrInvalidQuoteFormat`**
+Indicates the quote format or version is invalid:
+- `Version uint16` - Quote version found
+- `Size int` - Quote data size
+
+**`ErrCertChainVerification`**
+Indicates certificate chain verification failed:
+- `Reason string` - Detailed error reason
 
 #### `Quote`
 Represents an extracted SGX quote:
@@ -180,8 +191,8 @@ Represents the extracted PCK certificate chain from a quote:
 #### `ExtractQuote(cert *x509.Certificate) (*Quote, error)`
 Extracts an SGX quote from an X.509 certificate.
 
-#### `VerifyQuote(cert *x509.Certificate, quote *Quote) (*VerificationResult, error)`
-Performs comprehensive verification of an SGX quote against its certificate.
+#### `VerifyQuote(cert *x509.Certificate, quote *Quote) error`
+Performs comprehensive verification of an SGX quote against its certificate. Returns nil on success, or a specific error type on failure.
 
 #### `GetIntelSGXCertPool() (*x509.CertPool, error)`
 Returns a certificate pool pre-initialized with Intel's SGX Root CA.

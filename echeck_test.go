@@ -1,8 +1,10 @@
 package echeck
 
 import (
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -163,7 +165,7 @@ func TestVerifyMeasurements(t *testing.T) {
 }
 
 func TestVerifyQuoteNilInputs(t *testing.T) {
-	_, err := VerifyQuote(nil, nil)
+	err := VerifyQuote(nil, nil)
 	if err == nil {
 		t.Error("Expected error for nil inputs")
 	}
@@ -266,35 +268,71 @@ func TestCompleteVerificationWithSample(t *testing.T) {
 		t.Fatalf("Quote extraction failed: %v", err)
 	}
 
-	// Perform complete verification
-	result, err := VerifyQuote(cert, quote)
+	// Perform complete verification - should succeed
+	err = VerifyQuote(cert, quote)
 	if err != nil {
-		t.Fatalf("VerifyQuote failed: %v", err)
+		t.Errorf("Expected verification to pass, but got error: %v", err)
+	}
+}
+
+func TestVerifyQuoteErrors(t *testing.T) {
+	// Test with a valid certificate but invalid quote to trigger specific errors
+	cert, err := loadTestCertificate("test/sample.pem")
+	if err != nil {
+		t.Skip("Sample certificate not found")
+		return
 	}
 
-	// Verify all checks pass
-	if !result.Valid {
-		t.Errorf("Expected verification to pass, but got: %s", result.ErrorMessage)
+	// Test with quote that has mismatched report data but valid format
+	// (This is checked first in VerifyQuote)
+	mismatchQuote := &Quote{
+		Quote: SGXQuote{
+			Version: 3,
+			ReportBody: SGXReportBody{
+				ReportData: [64]byte{1, 2, 3}, // Wrong report data
+			},
+		},
+		RawData: make([]byte, 500), // Valid size
 	}
 
-	if !result.ReportDataMatchesCert {
-		t.Error("Expected report data to match certificate")
+	err = VerifyQuote(cert, mismatchQuote)
+	var mismatchErr ErrReportDataMismatch
+	if !errors.As(err, &mismatchErr) {
+		t.Errorf("Expected ErrReportDataMismatch, got %T: %v", err, err)
 	}
 
-	if !result.QuoteValid {
-		t.Error("Expected quote to be valid")
+}
+
+func TestVerifyQuoteFormatError(t *testing.T) {
+	// Create a dummy certificate for testing
+	cert, err := loadTestCertificate("test/sample.pem")
+	if err != nil {
+		t.Skip("Sample certificate not found")
+		return
 	}
 
-	if !result.CertChainValid {
-		t.Error("Expected certificate chain to be valid")
+	// Get the correct public key hash to avoid report data mismatch
+	pubKeyDER, _ := x509.MarshalPKIXPublicKey(cert.PublicKey)
+	pubKeyHash := sha256.Sum256(pubKeyDER)
+
+	// Test with invalid quote format but correct report data
+	invalidQuote := &Quote{
+		Quote: SGXQuote{
+			Version: 2, // Invalid version
+			ReportBody: SGXReportBody{
+				ReportData: [64]byte{}, // Initialize with zeros first
+			},
+		},
+		RawData: make([]byte, 100), // Too small
 	}
 
-	if result.ChecksPerformed != 4 {
-		t.Errorf("Expected 4 checks performed, got %d", result.ChecksPerformed)
-	}
+	// Copy the correct hash to the first 32 bytes of report data
+	copy(invalidQuote.Quote.ReportBody.ReportData[:32], pubKeyHash[:])
 
-	if result.ChecksPassed != 3 {
-		t.Errorf("Expected 3 checks passed, got %d", result.ChecksPassed)
+	err = VerifyQuote(cert, invalidQuote)
+	var formatErr ErrInvalidQuoteFormat
+	if !errors.As(err, &formatErr) {
+		t.Errorf("Expected ErrInvalidQuoteFormat, got %T: %v", err, err)
 	}
 }
 

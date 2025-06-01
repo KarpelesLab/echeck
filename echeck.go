@@ -25,18 +25,35 @@ type QuoteInfo struct {
 	ReportData [64]byte // Report data from the quote
 }
 
-// VerificationResult contains the detailed results of SGX quote verification
-type VerificationResult struct {
-	Valid                  bool   // Overall validation result
-	ErrorMessage           string // Error message if validation failed
-	MREnclaveValid         bool   // MRENCLAVE validation result
-	MRSignerValid          bool   // MRSIGNER validation result
-	SignatureValid         bool   // Quote signature validation result
-	QuoteValid             bool   // Overall quote format and data validation
-	ReportDataMatchesCert  bool   // Report data matches certificate public key hash
-	CertChainValid         bool   // Certificate chain validation result
-	ChecksPerformed        int    // Number of checks performed
-	ChecksPassed           int    // Number of checks that passed
+// Specific error types for different verification failures
+
+// ErrReportDataMismatch indicates the report data doesn't match the certificate's public key hash
+type ErrReportDataMismatch struct {
+	Expected []byte
+	Actual   []byte
+}
+
+func (e ErrReportDataMismatch) Error() string {
+	return fmt.Sprintf("report data does not match certificate public key hash: expected %x, got %x", e.Expected[:32], e.Actual[:32])
+}
+
+// ErrInvalidQuoteFormat indicates the quote format or version is invalid
+type ErrInvalidQuoteFormat struct {
+	Version uint16
+	Size    int
+}
+
+func (e ErrInvalidQuoteFormat) Error() string {
+	return fmt.Sprintf("invalid quote format: version %d, size %d bytes", e.Version, e.Size)
+}
+
+// ErrCertChainVerification indicates certificate chain verification failed
+type ErrCertChainVerification struct {
+	Reason string
+}
+
+func (e ErrCertChainVerification) Error() string {
+	return fmt.Sprintf("certificate chain verification failed: %s", e.Reason)
 }
 
 // SGXQuoteHeader represents the header structure that precedes SGX quote data
@@ -299,83 +316,54 @@ func (q *Quote) VerifyMeasurements(expectedMREnclave, expectedMRSigner []byte) b
 	return true
 }
 
-// VerifyQuote performs comprehensive verification of an SGX quote against its certificate
-func VerifyQuote(cert *x509.Certificate, quote *Quote) (*VerificationResult, error) {
+// VerifyQuote performs comprehensive verification of an SGX quote against its certificate.
+// Returns nil if verification succeeds, or a specific error if any check fails.
+func VerifyQuote(cert *x509.Certificate, quote *Quote) error {
 	if cert == nil || quote == nil {
-		return nil, errors.New("certificate or quote is nil")
+		return errors.New("certificate or quote is nil")
 	}
-
-	result := &VerificationResult{}
 
 	// Step 1: Verify that the report data matches the certificate's public key hash
 	pubKeyDER, err := x509.MarshalPKIXPublicKey(cert.PublicKey)
 	if err != nil {
-		result.ErrorMessage = fmt.Sprintf("Failed to marshal public key: %v", err)
-		return result, nil
+		return fmt.Errorf("failed to marshal public key: %v", err)
 	}
 
 	pubKeyHash := sha256.Sum256(pubKeyDER)
-	result.ChecksPerformed++
 
 	// Check if the first 32 bytes of report data match the public key hash
-	reportDataMatches := true
 	for i := 0; i < 32; i++ {
 		if quote.Quote.ReportBody.ReportData[i] != pubKeyHash[i] {
-			reportDataMatches = false
-			break
+			return ErrReportDataMismatch{
+				Expected: pubKeyHash[:],
+				Actual:   quote.Quote.ReportBody.ReportData[:],
+			}
 		}
-	}
-
-	result.ReportDataMatchesCert = reportDataMatches
-	if reportDataMatches {
-		result.ChecksPassed++
 	}
 
 	// Step 2: Basic quote validation
-	result.ChecksPerformed++
-	if quote.Quote.Version >= 3 && len(quote.RawData) > 432 {
-		result.QuoteValid = true
-		result.ChecksPassed++
-	} else {
-		result.ErrorMessage = "Invalid quote format or version"
+	if quote.Quote.Version < 3 || len(quote.RawData) <= 432 {
+		return ErrInvalidQuoteFormat{
+			Version: quote.Quote.Version,
+			Size:    len(quote.RawData),
+		}
 	}
 
 	// Step 3: Certificate chain validation
-	result.ChecksPerformed++
-	certChainValid := false
-	
-	// Extract PCK certificate chain from the quote
 	pckChain, err := quote.ExtractPCKCertChain()
 	if err != nil {
-		result.ErrorMessage = fmt.Sprintf("Failed to extract PCK certificate chain: %v", err)
-	} else {
-		// Verify the PCK certificate chain against Intel's trusted CAs
-		if err := pckChain.VerifyWithIntelCAs(); err != nil {
-			result.ErrorMessage = fmt.Sprintf("PCK certificate chain verification failed: %v", err)
-		} else {
-			certChainValid = true
-			result.ChecksPassed++
-		}
-	}
-	result.CertChainValid = certChainValid
-
-	// Step 4: For now, mark signature validation as pending full implementation
-	result.ChecksPerformed++
-	// TODO: Implement full ECDSA signature verification
-	result.SignatureValid = false // Will be implemented in future iterations
-
-	// Final validation - require report data match, basic quote validity, and certificate chain verification
-	result.Valid = result.ReportDataMatchesCert && result.QuoteValid && result.CertChainValid
-
-	if !result.Valid && result.ErrorMessage == "" {
-		if !result.ReportDataMatchesCert {
-			result.ErrorMessage = "Report data does not match certificate public key hash"
-		} else if !result.QuoteValid {
-			result.ErrorMessage = "Quote format validation failed"
-		} else if !result.CertChainValid {
-			result.ErrorMessage = "Certificate chain validation failed"
+		return ErrCertChainVerification{
+			Reason: fmt.Sprintf("failed to extract PCK certificate chain: %v", err),
 		}
 	}
 
-	return result, nil
+	// Verify the PCK certificate chain against Intel's trusted CAs
+	if err := pckChain.VerifyWithIntelCAs(); err != nil {
+		return ErrCertChainVerification{
+			Reason: err.Error(),
+		}
+	}
+
+	// All verification steps passed
+	return nil
 }
