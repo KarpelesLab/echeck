@@ -3,12 +3,15 @@
 package echeck
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math/big"
 )
 
 const (
@@ -96,6 +99,15 @@ type SGXQuote struct {
 	ReportBody    SGXReportBody // Report body (384 bytes)
 	SignatureLen  uint32        // Length of signature data
 	SignatureData []byte        // Variable-length signature data
+}
+
+// SGXECDSASignatureData represents the ECDSA signature data structure for SGX quotes
+type SGXECDSASignatureData struct {
+	Signature         [64]byte      // ECDSA signature (r=32 bytes, s=32 bytes)
+	AttestationPubKey [64]byte      // Attestation public key (x=32 bytes, y=32 bytes)
+	QEReport          SGXReportBody // QE report (384 bytes)
+	QEReportSignature [64]byte      // QE report signature (64 bytes)
+	// Additional authentication data follows...
 }
 
 // Quote represents an extracted SGX quote with its raw data
@@ -316,6 +328,106 @@ func (q *Quote) VerifyMeasurements(expectedMREnclave, expectedMRSigner []byte) b
 	return true
 }
 
+// VerifyECDSASignature verifies the ECDSA signature of the quote
+func (q *Quote) VerifyECDSASignature() error {
+	if q.Quote.Version != 3 {
+		return fmt.Errorf("ECDSA signature verification only supported for quote version 3, got %d", q.Quote.Version)
+	}
+
+	if len(q.Quote.SignatureData) < 64+64+384+64 {
+		return fmt.Errorf("signature data too short for ECDSA format: %d bytes", len(q.Quote.SignatureData))
+	}
+
+	// Extract signature components from signature data
+	sigData := q.Quote.SignatureData
+	sigR := sigData[0:32]
+	sigS := sigData[32:64]
+
+	// Extract attestation public key
+	pubKeyX := sigData[64:96]
+	pubKeyY := sigData[96:128]
+
+	// Create the attestation public key
+	pubKey, err := q.createAttestationPublicKey(pubKeyX, pubKeyY)
+	if err != nil {
+		return fmt.Errorf("failed to create attestation public key: %v", err)
+	}
+
+	// Compute the quote hash for signature verification
+	quoteHash, err := q.computeQuoteHash()
+	if err != nil {
+		return fmt.Errorf("failed to compute quote hash: %v", err)
+	}
+
+	// Verify the ECDSA signature
+	if err := q.verifyECDSASignature(quoteHash, sigR, sigS, pubKey); err != nil {
+		return fmt.Errorf("ECDSA signature verification failed: %v", err)
+	}
+
+	return nil
+}
+
+// createAttestationPublicKey creates an ECDSA public key from X,Y coordinates
+func (q *Quote) createAttestationPublicKey(pubKeyX, pubKeyY []byte) (*ecdsa.PublicKey, error) {
+	if len(pubKeyX) != 32 || len(pubKeyY) != 32 {
+		return nil, fmt.Errorf("invalid public key coordinate length: x=%d, y=%d", len(pubKeyX), len(pubKeyY))
+	}
+
+	// Convert byte arrays to big integers
+	x := new(big.Int).SetBytes(pubKeyX)
+	y := new(big.Int).SetBytes(pubKeyY)
+
+	// Create the public key using P-256 curve (secp256r1)
+	pubKey := &ecdsa.PublicKey{
+		Curve: elliptic.P256(),
+		X:     x,
+		Y:     y,
+	}
+
+	// Verify the public key is on the curve
+	if !pubKey.Curve.IsOnCurve(x, y) {
+		return nil, fmt.Errorf("public key coordinates are not on the P-256 curve")
+	}
+
+	return pubKey, nil
+}
+
+// computeQuoteHash computes SHA-256 hash of the quote data up to (but not including) signature_len field
+func (q *Quote) computeQuoteHash() ([]byte, error) {
+	// For ECDSA quotes, the hash is computed over everything up to but not including signature_len
+	// Quote structure: version(2) + sign_type(2) + epid_group_id(4) + qe_svn(2) + pce_svn(2) + 
+	//                  xeid(4) + basename(32) + report_body(384) = 432 bytes
+	
+	if len(q.RawData) < 432 {
+		return nil, fmt.Errorf("quote data too short for hash computation: %d bytes", len(q.RawData))
+	}
+
+	// Hash the first 432 bytes (everything up to signature_len field)
+	hashData := q.RawData[0:432]
+	hash := sha256.Sum256(hashData)
+	
+	return hash[:], nil
+}
+
+// verifyECDSASignature verifies the ECDSA signature using the provided parameters
+func (q *Quote) verifyECDSASignature(hash, sigR, sigS []byte, pubKey *ecdsa.PublicKey) error {
+	if len(sigR) != 32 || len(sigS) != 32 {
+		return fmt.Errorf("invalid signature component length: r=%d, s=%d", len(sigR), len(sigS))
+	}
+
+	// Convert signature components to big integers
+	r := new(big.Int).SetBytes(sigR)
+	s := new(big.Int).SetBytes(sigS)
+
+	// Verify the signature
+	valid := ecdsa.Verify(pubKey, hash, r, s)
+	if !valid {
+		return fmt.Errorf("ECDSA signature verification failed")
+	}
+
+	return nil
+}
+
 // VerifyQuote performs comprehensive verification of an SGX quote against its certificate.
 // Returns nil if verification succeeds, or a specific error if any check fails.
 func VerifyQuote(cert *x509.Certificate, quote *Quote) error {
@@ -349,7 +461,14 @@ func VerifyQuote(cert *x509.Certificate, quote *Quote) error {
 		}
 	}
 
-	// Step 3: Certificate chain validation
+	// Step 3: ECDSA signature verification (for v3 quotes)
+	if quote.Quote.Version == 3 {
+		if err := quote.VerifyECDSASignature(); err != nil {
+			return fmt.Errorf("ECDSA signature verification failed: %v", err)
+		}
+	}
+
+	// Step 4: Certificate chain validation
 	pckChain, err := quote.ExtractPCKCertChain()
 	if err != nil {
 		return ErrCertChainVerification{

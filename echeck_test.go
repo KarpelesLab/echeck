@@ -350,6 +350,39 @@ func BenchmarkExtractQuote(b *testing.B) {
 	}
 }
 
+func TestECDSASignatureVerificationWithSample(t *testing.T) {
+	testCases := []string{"test/sample.pem", "test/sample2.pem"}
+	
+	for _, testFile := range testCases {
+		t.Run(testFile, func(t *testing.T) {
+			// Test ECDSA signature verification specifically
+			cert, err := loadTestCertificate(testFile)
+			if err != nil {
+				t.Skipf("Skipping test - sample certificate not found: %v", err)
+				return
+			}
+
+			// Extract quote
+			quote, err := ExtractQuote(cert)
+			if err != nil {
+				t.Fatalf("Quote extraction failed: %v", err)
+			}
+
+			// Verify that this is an ECDSA quote (version 3)
+			if quote.Quote.Version != 3 {
+				t.Skipf("Skipping ECDSA test - quote version is %d, expected 3", quote.Quote.Version)
+				return
+			}
+
+			// Test ECDSA signature verification
+			err = quote.VerifyECDSASignature()
+			if err != nil {
+				t.Errorf("ECDSA signature verification failed: %v", err)
+			}
+		})
+	}
+}
+
 func BenchmarkVerifyQuote(b *testing.B) {
 	cert, err := loadTestCertificate("test/sample.pem")
 	if err != nil {
