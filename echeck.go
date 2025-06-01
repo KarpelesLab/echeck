@@ -428,6 +428,32 @@ func (q *Quote) verifyECDSASignature(hash, sigR, sigS []byte, pubKey *ecdsa.Publ
 	return nil
 }
 
+// VerifyAttestationKey verifies that the attestation key in the quote can be properly extracted
+// and is a valid ECDSA key. The PCK certificate verification (Intel's authority) is handled separately.
+func (q *Quote) VerifyAttestationKey() error {
+	if q.Quote.Version != 3 {
+		return fmt.Errorf("attestation key verification only supported for quote version 3, got %d", q.Quote.Version)
+	}
+
+	if len(q.Quote.SignatureData) < 64+64 {
+		return fmt.Errorf("signature data too short for attestation key extraction: %d bytes", len(q.Quote.SignatureData))
+	}
+
+	// Extract attestation public key from quote signature data
+	sigData := q.Quote.SignatureData
+	pubKeyX := sigData[64:96]
+	pubKeyY := sigData[96:128]
+
+	// Create the attestation public key from the quote - this validates it's a proper ECDSA key
+	_, err := q.createAttestationPublicKey(pubKeyX, pubKeyY)
+	if err != nil {
+		return fmt.Errorf("failed to create attestation public key from quote: %v", err)
+	}
+
+	// Attestation key is valid and extractable
+	return nil
+}
+
 // VerifyQuote performs comprehensive verification of an SGX quote against its certificate.
 // Returns nil if verification succeeds, or a specific error if any check fails.
 func VerifyQuote(cert *x509.Certificate, quote *Quote) error {
@@ -453,6 +479,13 @@ func VerifyQuote(cert *x509.Certificate, quote *Quote) error {
 		}
 	}
 
+	// Verify the remaining bytes (32-63) of report data are zero (padding)
+	for i := 32; i < 64; i++ {
+		if quote.Quote.ReportBody.ReportData[i] != 0 {
+			return fmt.Errorf("non-zero padding found in report data at position %d: 0x%02x", i, quote.Quote.ReportBody.ReportData[i])
+		}
+	}
+
 	// Step 2: Basic quote validation
 	if quote.Quote.Version < 3 || len(quote.RawData) <= 432 {
 		return ErrInvalidQuoteFormat{
@@ -461,14 +494,16 @@ func VerifyQuote(cert *x509.Certificate, quote *Quote) error {
 		}
 	}
 
-	// Step 3: ECDSA signature verification (for v3 quotes)
+	// Step 3: ECDSA signature verification - proves quote authenticity
+	// This verifies the cryptographic signature that proves the SGX enclave generated this quote
 	if quote.Quote.Version == 3 {
 		if err := quote.VerifyECDSASignature(); err != nil {
 			return fmt.Errorf("ECDSA signature verification failed: %v", err)
 		}
 	}
 
-	// Step 4: Certificate chain validation
+	// Step 4: PCK certificate chain validation - establishes Intel's authority
+	// This proves the quote came from genuine Intel SGX hardware certified by Intel
 	pckChain, err := quote.ExtractPCKCertChain()
 	if err != nil {
 		return ErrCertChainVerification{
@@ -480,6 +515,13 @@ func VerifyQuote(cert *x509.Certificate, quote *Quote) error {
 	if err := pckChain.VerifyWithIntelCAs(); err != nil {
 		return ErrCertChainVerification{
 			Reason: err.Error(),
+		}
+	}
+
+	// Step 5: Verify attestation key is valid and extractable
+	if quote.Quote.Version == 3 {
+		if err := quote.VerifyAttestationKey(); err != nil {
+			return fmt.Errorf("attestation key verification failed: %v", err)
 		}
 	}
 

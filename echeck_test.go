@@ -383,6 +383,33 @@ func TestECDSASignatureVerificationWithSample(t *testing.T) {
 	}
 }
 
+func TestAttestationKeyVerificationWithSample(t *testing.T) {
+	// Test attestation key verification specifically
+	cert, err := loadTestCertificate("test/sample.pem")
+	if err != nil {
+		t.Skipf("Skipping test - sample certificate not found: %v", err)
+		return
+	}
+
+	// Extract quote
+	quote, err := ExtractQuote(cert)
+	if err != nil {
+		t.Fatalf("Quote extraction failed: %v", err)
+	}
+
+	// Verify that this is an ECDSA quote (version 3)
+	if quote.Quote.Version != 3 {
+		t.Skipf("Skipping attestation key test - quote version is %d, expected 3", quote.Quote.Version)
+		return
+	}
+
+	// Test attestation key verification - just verifies key is valid and extractable
+	err = quote.VerifyAttestationKey()
+	if err != nil {
+		t.Errorf("Attestation key verification failed: %v", err)
+	}
+}
+
 func BenchmarkVerifyQuote(b *testing.B) {
 	cert, err := loadTestCertificate("test/sample.pem")
 	if err != nil {
