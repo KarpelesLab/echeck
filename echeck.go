@@ -454,6 +454,12 @@ func (q *Quote) VerifyAttestationKey() error {
 	return nil
 }
 
+// ComputePublicKeyHash computes SHA-256 hash of a public key in DER format
+func ComputePublicKeyHash(pubKeyDER []byte) []byte {
+	hash := sha256.Sum256(pubKeyDER)
+	return hash[:]
+}
+
 // VerifyQuote performs comprehensive verification of an SGX quote against its certificate.
 // Returns nil if verification succeeds, or a specific error if any check fails.
 func VerifyQuote(cert *x509.Certificate, quote *Quote) error {

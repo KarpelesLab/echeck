@@ -1,4 +1,5 @@
 /echeck
+/echeck-cli/echeck-cli
 *.o
 *.bin
 build/
