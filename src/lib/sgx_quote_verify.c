@@ -215,8 +215,6 @@ int verify_report_data(const sgx_quote_t *quote, const unsigned char *pubkey_has
     
     /* Compare the first SHA256_DIGEST_LENGTH bytes of report_data with pubkey_hash */
     int report_data_valid = 1;
-    
-    /* Compare the report_data against the pubkey_hash */
 
     /* Debug: Print both values for comparison when in verbose mode */
     if (is_verbose_mode()) {
@@ -233,23 +231,18 @@ int verify_report_data(const sgx_quote_t *quote, const unsigned char *pubkey_has
         fprintf(stderr, "\n");
     }
 
-    /* Verify first 32 bytes (SHA-256 hash) */
-    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
-        if (quote->report_body.report_data[i] != pubkey_hash[i]) {
-            /* Mismatch found */
-            report_data_valid = 0;
-            if (is_verbose_mode()) {
-                fprintf(stderr, "Mismatch at position %d: report_data[%d]=0x%02x, pubkey_hash[%d]=0x%02x\n",
-                        i, i, quote->report_body.report_data[i], i, pubkey_hash[i]);
-            }
-            break;
+    /* Verify first 32 bytes (SHA-256 hash) using constant-time comparison
+     * to prevent timing attacks */
+    if (CRYPTO_memcmp(quote->report_body.report_data, pubkey_hash, SHA256_DIGEST_LENGTH) != 0) {
+        report_data_valid = 0;
+        if (is_verbose_mode()) {
+            fprintf(stderr, "Report data hash mismatch\n");
         }
     }
 
-    /* Verify remaining bytes are zeros (padding) */
-
-    /* Check for non-zero padding bytes */
-    for (int i = SHA256_DIGEST_LENGTH; i < sizeof(sgx_report_data_t); i++) {
+    /* Verify remaining bytes are zeros (padding)
+     * This doesn't need constant-time comparison since we're checking for zeros */
+    for (int i = SHA256_DIGEST_LENGTH; i < (int)sizeof(sgx_report_data_t); i++) {
         if (quote->report_body.report_data[i] != 0) {
             report_data_valid = 0;
             if (is_verbose_mode()) {

@@ -230,6 +230,9 @@ extern int (*ERR_GET_REASON)(unsigned long e);
 /* SHA Functions */
 extern unsigned char* (*SHA256)(const unsigned char *d, size_t n, unsigned char *md);
 
+/* Constant-time comparison */
+extern int (*CRYPTO_memcmp)(const void *a, const void *b, size_t len);
+
 /* Memory Management */
 extern void (*CRYPTO_free)(void *ptr, const char *file, int line);
 /* Define our own OPENSSL_free macro to redirect to CRYPTO_free with the proper file and line information */

@@ -99,6 +99,9 @@ void (*ERR_clear_error)(void) = NULL;
 /* SHA Functions */
 unsigned char* (*SHA256)(const unsigned char *d, size_t n, unsigned char *md) = NULL;
 
+/* Constant-time comparison */
+int (*CRYPTO_memcmp)(const void *a, const void *b, size_t len) = NULL;
+
 /* Memory management */
 void (*CRYPTO_free)(void *ptr, const char *file, int line) = NULL;
 
@@ -411,7 +414,10 @@ int init_openssl_runtime(void) {
     
     /* Load SHA functions */
     LOAD_SYMBOL(libcrypto_handle, SHA256);
-    
+
+    /* Load constant-time comparison */
+    LOAD_SYMBOL(libcrypto_handle, CRYPTO_memcmp);
+
     /* Load memory management functions */
     LOAD_SYMBOL(libcrypto_handle, CRYPTO_free);
     

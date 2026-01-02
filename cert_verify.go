@@ -51,7 +51,10 @@ func GetIntelSGXCertPool() (*x509.CertPool, error) {
 	if block == nil {
 		return nil, errors.New("failed to decode Intel SGX Root CA certificate")
 	}
-	
+	if block.Type != "CERTIFICATE" {
+		return nil, fmt.Errorf("unexpected PEM block type: %s (expected CERTIFICATE)", block.Type)
+	}
+
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse Intel SGX Root CA certificate: %v", err)
