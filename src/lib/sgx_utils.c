@@ -470,8 +470,9 @@ int verify_qe_report_data(const sgx_quote_t *quote) {
         fprintf(stderr, "\n");
     }
 
-    /* Compare with QE Report's report_data (first 32 bytes) */
-    if (memcmp(expected_hash, sig_data->qe_report.report_data, SHA256_DIGEST_LENGTH) != 0) {
+    /* Compare with QE Report's report_data (first 32 bytes)
+     * Use constant-time comparison to prevent timing attacks */
+    if (CRYPTO_memcmp(expected_hash, sig_data->qe_report.report_data, SHA256_DIGEST_LENGTH) != 0) {
         fprintf(stderr, "Error: QE Report report_data does not match expected hash of attestation key\n");
         return 0;
     }
