@@ -351,19 +351,31 @@ jobs:
             Write-Host "Download failed: $_"
         }
 
-        # If download failed, trigger the OpenSSL build workflow and wait for it
+        # If download failed, check for running builds or trigger a new one
         if (-not $downloadSuccess) {
-            Write-Host "OpenSSL ARM64 artifact not found or expired. Triggering build workflow..."
+            Write-Host "OpenSSL ARM64 artifact not found or expired."
 
-            # Trigger the OpenSSL build workflow
-            gh workflow run "Build OpenSSL for Windows ARM64" --repo ${{ github.repository }}
+            # Check if there's already a build running
+            $runInfo = gh run list --workflow "Build OpenSSL for Windows ARM64" --repo ${{ github.repository }} --limit 1 --json status,conclusion,databaseId | ConvertFrom-Json
 
-            # Wait for the workflow to start and complete (with timeout)
+            $needsTrigger = $true
+            if ($runInfo -and $runInfo[0]) {
+                $status = $runInfo[0].status
+                if ($status -eq "in_progress" -or $status -eq "queued") {
+                    Write-Host "OpenSSL build already running (status: $status), waiting for it..."
+                    $needsTrigger = $false
+                }
+            }
+
+            if ($needsTrigger) {
+                Write-Host "Triggering OpenSSL build workflow..."
+                gh workflow run "Build OpenSSL for Windows ARM64" --repo ${{ github.repository }}
+                Start-Sleep -Seconds 10  # Give it time to start
+            }
+
+            # Wait for the build to complete (with timeout)
             Write-Host "Waiting for OpenSSL build to complete (this may take ~30 minutes)..."
-            Start-Sleep -Seconds 30  # Give it time to start
-
-            # Get the latest run ID for the OpenSSL workflow
-            $maxAttempts = 60  # 60 * 30 seconds = 30 minutes max wait
+            $maxAttempts = 70  # 70 * 30 seconds = 35 minutes max wait
             $attempt = 0
             $buildComplete = $false
 
@@ -374,7 +386,6 @@ jobs:
                 if ($runInfo -and $runInfo[0]) {
                     $status = $runInfo[0].status
                     $conclusion = $runInfo[0].conclusion
-                    $runId = $runInfo[0].databaseId
 
                     Write-Host "Attempt $attempt : Build status: $status, conclusion: $conclusion"
 
