@@ -21,7 +21,4 @@ int compute_quote_hash(const sgx_quote_t *quote, unsigned char *hash, unsigned i
 /* Parse PEM certificate from quote signature data */
 X509 *parse_quote_cert(const uint8_t *cert_data, size_t cert_data_size);
 
-/* Display quote information */
-void display_quote_info(const sgx_quote_t *quote);
-
 #endif /* SGX_QUOTE_PARSER_H */

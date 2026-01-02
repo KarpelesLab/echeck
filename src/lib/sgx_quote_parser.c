@@ -170,10 +170,3 @@ X509 *parse_quote_cert(const uint8_t *cert_data, size_t cert_data_size) {
     BIO_free(cert_bio);
     return cert;
 }
-
-/* Display quote information - this function is now a no-op as the output
- * is handled by the main application according to verbosity settings */
-void display_quote_info(const sgx_quote_t *quote) {
-    /* This function used to print the quote details, now it's a no-op */
-    (void)quote; /* Prevent unused parameter warning */
-}
