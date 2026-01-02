@@ -45,10 +45,10 @@ int verify_sgx_quote(const unsigned char *quote_data, size_t quote_len,
         signature_len = quote_len - min_quote_size;
     }
 
-    /* Check if signature length is valid */
-    if (signature_len > 0 && quote_len < min_quote_size + signature_len) {
-        fprintf(stderr, "Quote data size (%zu) smaller than expected (%zu)\n",
-                quote_len, min_quote_size + signature_len);
+    /* Check if signature length is valid (avoid integer overflow by using subtraction) */
+    if (signature_len > 0 && (quote_len - min_quote_size) < signature_len) {
+        fprintf(stderr, "Quote data size (%zu) smaller than expected (need %u more bytes for signature)\n",
+                quote_len, signature_len);
         result->error_message = "Quote data size smaller than expected";
         return 0;
     }
