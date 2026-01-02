@@ -64,7 +64,7 @@ typedef struct {
 typedef struct {
     /* Basic validation result */
     int valid;                     /**< 1 if valid, 0 if invalid */
-    char *error_message;           /**< Error message (NULL if valid) */
+    const char *error_message;     /**< Error message (NULL if valid) */
     
     /* Detailed validation flags */
     int mr_enclave_valid;          /**< MRENCLAVE validation result */
