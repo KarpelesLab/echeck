@@ -223,7 +223,8 @@ func parseQuote(data []byte) (*SGXQuote, error) {
 	offset += 4
 
 	// Parse signature data
-	if offset+int(quote.SignatureLen) > len(data) {
+	// Use subtraction to avoid integer overflow on 32-bit systems
+	if int(quote.SignatureLen) > len(data)-offset {
 		return nil, fmt.Errorf("signature length (%d) exceeds remaining data (%d)", quote.SignatureLen, len(data)-offset)
 	}
 

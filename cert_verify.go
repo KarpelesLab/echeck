@@ -150,8 +150,9 @@ func (q *Quote) parseAuthData() (*SGXAuthData, error) {
 	}
 
 	// Extract certificate data
-	if len(sigData) < offset+int(authData.CertDataSize) {
-		return nil, fmt.Errorf("signature data too short for certificate data: need %d bytes, have %d", 
+	// Use subtraction to avoid integer overflow on 32-bit systems
+	if int(authData.CertDataSize) > len(sigData)-offset {
+		return nil, fmt.Errorf("signature data too short for certificate data: need %d bytes, have %d",
 			authData.CertDataSize, len(sigData)-offset)
 	}
 	
