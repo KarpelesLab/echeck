@@ -222,9 +222,9 @@ func TestCertificateChainVerificationWithSample(t *testing.T) {
 		t.Fatalf("PCK certificate chain extraction failed: %v", err)
 	}
 
-	// Verify we have the expected certificates
-	if len(pckChain.Certificates) != 2 {
-		t.Errorf("Expected 2 certificates, got %d", len(pckChain.Certificates))
+	// Verify we have the expected certificates (leaf PCK, intermediate CA, root CA)
+	if len(pckChain.Certificates) != 3 {
+		t.Errorf("Expected 3 certificates, got %d", len(pckChain.Certificates))
 	}
 
 	if pckChain.PCKCert == nil {
@@ -236,8 +236,10 @@ func TestCertificateChainVerificationWithSample(t *testing.T) {
 	}
 
 	// Verify certificate subjects match expected values
-	expectedPCKSubject := "CN=Intel SGX PCK Processor CA,O=Intel Corporation,L=Santa Clara,ST=CA,C=US"
-	expectedIntermediateSubject := "CN=Intel SGX Root CA,O=Intel Corporation,L=Santa Clara,ST=CA,C=US"
+	// PCK cert is the leaf certificate that signs the QE Report
+	expectedPCKSubject := "CN=Intel SGX PCK Certificate,O=Intel Corporation,L=Santa Clara,ST=CA,C=US"
+	// Intermediate cert is the PCK Processor CA that issues PCK certificates
+	expectedIntermediateSubject := "CN=Intel SGX PCK Processor CA,O=Intel Corporation,L=Santa Clara,ST=CA,C=US"
 
 	if pckChain.PCKCert.Subject.String() != expectedPCKSubject {
 		t.Errorf("Unexpected PCK cert subject: %s", pckChain.PCKCert.Subject.String())

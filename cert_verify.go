@@ -28,11 +28,11 @@ AiEA4J0lrHoMs+Xo5o/sX6O9QWxHRAvZUGOdRQ7cvqRXaqI=
 
 // SGXAuthData represents the authentication data structure in quote signatures
 type SGXAuthData struct {
-	AuthDataSize uint16 // Size of auth data (typically 0x0020)
+	AuthDataSize uint16   // Size of auth data (typically 0x0020)
 	AuthData     [32]byte // 32 bytes of auth data
-	CertType     uint16 // Certificate type (typically 0x0005)
-	CertDataSize uint16 // Size of certificate data
-	CertData     []byte // Certificate data (PEM formatted PCK certs)
+	CertType     uint16   // Certificate type (typically 0x0005)
+	CertDataSize uint32   // Size of certificate data (4 bytes)
+	CertData     []byte   // Certificate data (PEM formatted PCK certs)
 }
 
 // PCKCertChain represents the extracted PCK certificate chain from a quote
@@ -128,15 +128,15 @@ func (q *Quote) parseAuthData() (*SGXAuthData, error) {
 	offset += 32
 	
 	// Parse certificate type and size
-	if len(sigData) < offset+4 {
+	if len(sigData) < offset+6 {
 		return nil, errors.New("signature data too short for cert type and size")
 	}
-	
+
 	authData.CertType = binary.LittleEndian.Uint16(sigData[offset : offset+2])
 	offset += 2
-	
-	authData.CertDataSize = binary.LittleEndian.Uint16(sigData[offset : offset+2])
-	offset += 2
+
+	authData.CertDataSize = binary.LittleEndian.Uint32(sigData[offset : offset+4])
+	offset += 4
 	
 	if authData.CertType != 0x0005 {
 		return nil, fmt.Errorf("unexpected certificate type: 0x%04x (expected 0x0005)", authData.CertType)

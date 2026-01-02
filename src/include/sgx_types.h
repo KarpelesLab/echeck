@@ -133,7 +133,7 @@ typedef struct _sgx_ql_auth_data_t {
     uint16_t              auth_data_size;       /* Size of auth data (observed: 0x0020) */
     uint8_t               auth_data[32];        /* 32 bytes of auth data (0x00-0x1F) */
     uint16_t              cert_type;            /* Certificate type (observed: 0x0005) */
-    uint16_t              cert_data_size;       /* Size of certificate data (observed: ~0x0DDC) */
+    uint32_t              cert_data_size;       /* Size of certificate data (4 bytes, observed: ~0x0DDC) */
     uint8_t               cert_data[];          /* Certificate data (PEM formatted PCK certs) */
 } sgx_ql_auth_data_t;
 

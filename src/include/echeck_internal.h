@@ -24,11 +24,13 @@ int extract_pck_certs(const sgx_quote_t *quote, STACK_OF(X509) **out_cert_stack)
 int extract_qe_report(const sgx_quote_t *quote, unsigned char **out_report, size_t *out_report_size);
 int extract_attestation_key(const sgx_quote_t *quote, EVP_PKEY **out_key);
 
+/* Internal functions from sgx_utils.c - QE Report verification */
+int verify_qe_report_signature(const sgx_quote_t *quote, EVP_PKEY *pck_pubkey);
+int verify_qe_report_data(const sgx_quote_t *quote);
+
 /* Internal functions from sgx_quote_verify.c */
-int verify_qe_report_signature(const unsigned char *report_data, size_t report_size,
-                            const ECDSA_SIG *signature, EVP_PKEY *attestation_key);
 int verify_pck_cert_chain(STACK_OF(X509) *cert_stack);
-int verify_attestation_key(const sgx_quote_t *quote, EVP_PKEY *attestation_key, 
+int verify_attestation_key(const sgx_quote_t *quote, EVP_PKEY *attestation_key,
                         STACK_OF(X509) *cert_stack);
 
 /* Internal functions from sgx_cert_verify.c */
