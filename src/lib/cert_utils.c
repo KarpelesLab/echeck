@@ -1,6 +1,7 @@
 #include "echeck.h"
 #include "echeck_internal.h"
 #include <stdlib.h>
+#include <limits.h>
 
 /* Load a certificate from a PEM file */
 void *echeck_load_certificate(const char *file_path) {
@@ -126,9 +127,16 @@ int verify_ecdsa_signature(const unsigned char *data, size_t data_len,
         goto cleanup;
     }
     
+    /* Validate lengths before passing to BN_bin2bn (takes int, not size_t) */
+    if (sig_r_len > INT_MAX || sig_s_len > INT_MAX) {
+        fprintf(stderr, "Error: signature component length exceeds INT_MAX\n");
+        ECDSA_SIG_free(sig_obj);
+        goto cleanup;
+    }
+
     /* Convert raw r and s values to BIGNUMs and set them in the ECDSA_SIG object */
-    BIGNUM *bn_r = BN_bin2bn(sig_r, sig_r_len, NULL);
-    BIGNUM *bn_s = BN_bin2bn(sig_s, sig_s_len, NULL);
+    BIGNUM *bn_r = BN_bin2bn(sig_r, (int)sig_r_len, NULL);
+    BIGNUM *bn_s = BN_bin2bn(sig_s, (int)sig_s_len, NULL);
     
     if (!bn_r || !bn_s) {
         print_openssl_error("Error converting signature components to BIGNUMs");

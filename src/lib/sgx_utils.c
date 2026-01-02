@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <limits.h>
 
 #include "echeck.h"
 #include "echeck_internal.h"
@@ -514,9 +515,16 @@ int verify_quote_signature_raw(const unsigned char *quote_hash, unsigned int quo
         return 0;
     }
     
+    /* Validate lengths before passing to BN_bin2bn (takes int, not unsigned int) */
+    if (sig_r_len > INT_MAX || sig_s_len > INT_MAX) {
+        fprintf(stderr, "Error: signature component length exceeds INT_MAX\n");
+        ECDSA_SIG_free(sig);
+        return 0;
+    }
+
     /* Set the R and S components */
-    BIGNUM *r = BN_bin2bn(sig_r, sig_r_len, NULL);
-    BIGNUM *s = BN_bin2bn(sig_s, sig_s_len, NULL);
+    BIGNUM *r = BN_bin2bn(sig_r, (int)sig_r_len, NULL);
+    BIGNUM *s = BN_bin2bn(sig_s, (int)sig_s_len, NULL);
     
     if (!r || !s) {
         print_openssl_error("Failed to convert signature components to BIGNUMs");
