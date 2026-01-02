@@ -34,11 +34,15 @@ int verify_sgx_quote(const unsigned char *quote_data, size_t quote_len,
         return 0;
     }
 
-    /* Use the SGX quote structure for proper field access */
+    /* Use the SGX quote structure for proper field access
+     * Note: The struct is packed (#pragma pack(push, 1)) and we use memcpy/extract
+     * functions for integer fields to handle potentially unaligned data safely
+     * on strict-alignment architectures (e.g., ARM). */
     const sgx_quote_t *quote = (const sgx_quote_t *)quote_data;
 
-    /* Get signature information */
-    uint32_t signature_len = quote->signature_len;
+    /* Get signature information using memcpy for alignment safety */
+    uint32_t signature_len;
+    memcpy(&signature_len, &quote->signature_len, sizeof(signature_len));
 
     /* Reject quotes with zero signature length - a valid quote must have a signature */
     if (signature_len == 0) {

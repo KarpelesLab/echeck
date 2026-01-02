@@ -68,12 +68,17 @@ int extract_sgx_quote(void *cert_ptr, sgx_quote_buffer_t *quote_buffer) {
                 return 0;
             }
 
-            /* Parse the header */
+            /* Parse the header using extract_uint32 for alignment-safe access
+             * on strict-alignment architectures (e.g., ARM). The struct is packed
+             * (#pragma pack(push, 1)) and raw_data may not be properly aligned. */
             sgx_quote_header_t *header = (sgx_quote_header_t *)raw_data;
             uint32_t header_version = extract_uint32((uint8_t*)&header->version);
             uint32_t header_type = extract_uint32((uint8_t*)&header->type);
             uint32_t quote_size = extract_uint32((uint8_t*)&header->size);
             uint32_t reserved = extract_uint32((uint8_t*)&header->reserved);
+            (void)header_version; /* Suppress unused variable warning */
+            (void)header_type;
+            (void)reserved;
 
             /* Process header information */
 
