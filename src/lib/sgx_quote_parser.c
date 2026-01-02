@@ -154,8 +154,8 @@ X509 *parse_quote_cert(const uint8_t *cert_data, size_t cert_data_size) {
     BIO *cert_bio;
     X509 *cert = NULL;
     
-    /* Create a BIO for the certificate data */
-    cert_bio = BIO_new_mem_buf(cert_data, -1); /* -1 tells BIO to use strlen() for null-terminated data */
+    /* Create a BIO for the certificate data using explicit size */
+    cert_bio = BIO_new_mem_buf(cert_data, (int)cert_data_size);
     if (!cert_bio) {
         print_openssl_error("Error creating BIO for certificate data");
         return NULL;
