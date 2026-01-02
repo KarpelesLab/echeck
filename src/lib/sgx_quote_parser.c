@@ -3,6 +3,7 @@
 #include "sgx_quote_parser.h"
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 /* All OpenSSL functions are accessed through openssl_runtime.h now */
 
@@ -153,7 +154,13 @@ int compute_quote_hash(const sgx_quote_t *quote, unsigned char *hash, unsigned i
 X509 *parse_quote_cert(const uint8_t *cert_data, size_t cert_data_size) {
     BIO *cert_bio;
     X509 *cert = NULL;
-    
+
+    /* Validate size before casting to int (BIO_new_mem_buf takes int) */
+    if (cert_data_size == 0 || cert_data_size > INT_MAX) {
+        fprintf(stderr, "Error: Invalid certificate data size: %zu\n", cert_data_size);
+        return NULL;
+    }
+
     /* Create a BIO for the certificate data using explicit size */
     cert_bio = BIO_new_mem_buf(cert_data, (int)cert_data_size);
     if (!cert_bio) {
