@@ -19,7 +19,7 @@ func loadTestCertificate(filename string) (*x509.Certificate, error) {
 
 	block, _ := pem.Decode(certPEM)
 	if block == nil {
-		return nil, err
+		return nil, errors.New("failed to decode PEM block from certificate file")
 	}
 
 	return x509.ParseCertificate(block.Bytes)
