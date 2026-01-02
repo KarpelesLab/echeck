@@ -76,43 +76,13 @@ int verify_sgx_quote(const unsigned char *quote_data, size_t quote_len,
         result->checks_passed++;
     }
 
-    /* Check 4: MR_SIGNER check */
-    result->checks_performed++;
-
-    /* Convert binary MR_SIGNER to hex string for later use if needed */
-    char extracted_mr_signer[97] = {0}; /* 32 bytes * 2 hex chars + null terminator */
-    for (int i = 0; i < 32; i++) {
-        sprintf(extracted_mr_signer + (i * 2), "%02x", quote->report_body.mr_signer[i]);
-    }
-
-    /* We've already verified MR_SIGNER is valid (not all zeros) in Check 3 */
-    result->checks_passed++;
-
-    /* Check 5: MR_ENCLAVE value */
-    result->checks_performed++;
-
-    /* Convert binary MR_ENCLAVE to hex string for storage in result */
-    char extracted_mr_enclave[97] = {0}; /* 32 bytes * 2 hex chars + null terminator */
-    for (int i = 0; i < 32; i++) {
-        sprintf(extracted_mr_enclave + (i * 2), "%02x", quote->report_body.mr_enclave[i]);
-    }
-
-    /* We've already verified MR_ENCLAVE is valid (not all zeros) in Check 2 */
-    result->checks_passed++;
-
-    /* Check 6: Signature length validation */
+    /* Check 4: Signature length validation */
     result->checks_performed++;
     if (signature_len > 0 && signature_len <= quote_len - min_quote_size) {
         result->checks_passed++;
     }
 
-    /* Check 7: Quote version validation (redundant with check 1, but kept for legacy reasons) */
-    result->checks_performed++;
-    if (quote->version >= 1 && quote->version <= 3) {
-        result->checks_passed++;
-    }
-
-    /* Check 8: Signature verification */
+    /* Check 5: Signature verification */
     result->checks_performed++;
 
     /* For ECDSA quotes (v3), verify the signature */
