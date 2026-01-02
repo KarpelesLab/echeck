@@ -335,13 +335,74 @@ jobs:
         # Create temp directory for OpenSSL
         New-Item -ItemType Directory -Force -Path "openssl-arm64"
 
-        # Download the latest successful artifact from our other workflow
         # Set GitHub token as an environment variable for gh CLI
         $env:GH_TOKEN = "${{ secrets.GITHUB_TOKEN }}"
 
-        # Download using GitHub CLI
+        # Try to download the artifact
         Write-Host "Downloading OpenSSL ARM64 artifact using GitHub CLI..."
-        gh run download --repo ${{ github.repository }} --name openssl-3.5.0-windows-arm64 --dir openssl-arm64-temp
+        $downloadSuccess = $false
+
+        try {
+            gh run download --repo ${{ github.repository }} --name openssl-3.5.0-windows-arm64 --dir openssl-arm64-temp 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $downloadSuccess = $true
+            }
+        } catch {
+            Write-Host "Download failed: $_"
+        }
+
+        # If download failed, trigger the OpenSSL build workflow and wait for it
+        if (-not $downloadSuccess) {
+            Write-Host "OpenSSL ARM64 artifact not found or expired. Triggering build workflow..."
+
+            # Trigger the OpenSSL build workflow
+            gh workflow run "Build OpenSSL for Windows ARM64" --repo ${{ github.repository }}
+
+            # Wait for the workflow to start and complete (with timeout)
+            Write-Host "Waiting for OpenSSL build to complete (this may take ~30 minutes)..."
+            Start-Sleep -Seconds 30  # Give it time to start
+
+            # Get the latest run ID for the OpenSSL workflow
+            $maxAttempts = 60  # 60 * 30 seconds = 30 minutes max wait
+            $attempt = 0
+            $buildComplete = $false
+
+            while ($attempt -lt $maxAttempts -and -not $buildComplete) {
+                $attempt++
+                $runInfo = gh run list --workflow "Build OpenSSL for Windows ARM64" --repo ${{ github.repository }} --limit 1 --json status,conclusion,databaseId | ConvertFrom-Json
+
+                if ($runInfo -and $runInfo[0]) {
+                    $status = $runInfo[0].status
+                    $conclusion = $runInfo[0].conclusion
+                    $runId = $runInfo[0].databaseId
+
+                    Write-Host "Attempt $attempt : Build status: $status, conclusion: $conclusion"
+
+                    if ($status -eq "completed") {
+                        if ($conclusion -eq "success") {
+                            Write-Host "OpenSSL build completed successfully!"
+                            $buildComplete = $true
+
+                            # Now try to download again
+                            gh run download --repo ${{ github.repository }} --name openssl-3.5.0-windows-arm64 --dir openssl-arm64-temp
+                            $downloadSuccess = $true
+                        } else {
+                            Write-Host "ERROR: OpenSSL build failed with conclusion: $conclusion"
+                            exit 1
+                        }
+                    }
+                }
+
+                if (-not $buildComplete) {
+                    Start-Sleep -Seconds 30
+                }
+            }
+
+            if (-not $buildComplete) {
+                Write-Host "ERROR: Timeout waiting for OpenSSL build to complete"
+                exit 1
+            }
+        }
 
         # Extract the artifact
         Write-Host "Extracting OpenSSL ARM64 artifact..."
@@ -349,7 +410,7 @@ jobs:
         if ($zipFile) {
           Expand-Archive -Path $zipFile.FullName -DestinationPath "openssl-arm64"
           $opensslDir = Get-ChildItem -Path "openssl-arm64" -Directory | Select-Object -First 1
-          $opensslPath = $opensslDir.FullName  # Use the full path without Join-Path
+          $opensslPath = $opensslDir.FullName
 
           Write-Host "Extracted OpenSSL to: $opensslPath"
 
@@ -357,16 +418,8 @@ jobs:
           Write-Host "Listing OpenSSL directory structure:"
           Get-ChildItem -Path "$opensslPath" -Recurse | Select-Object FullName | ForEach-Object { $_.FullName }
         } else {
-          # Fallback to the pre-installed OpenSSL if download fails
-          Write-Host "Download failed, falling back to installed OpenSSL..."
-          if (Test-Path "C:/Program Files/OpenSSL") {
-            $opensslPath = "C:/Program Files/OpenSSL"
-          } elseif (Test-Path "C:/Program Files/OpenSSL-Win64") {
-            $opensslPath = "C:/Program Files/OpenSSL-Win64"
-          } else {
-            Write-Host "ERROR: Could not find OpenSSL installation directory!"
-            exit 1
-          }
+          Write-Host "ERROR: No OpenSSL artifact zip file found after download!"
+          exit 1
         }
 
         # Verify that we have the necessary OpenSSL ARM64 DLLs
@@ -383,12 +436,8 @@ jobs:
         # Set OpenSSL paths for CMake
         echo "OPENSSL_ROOT_DIR=$opensslPath" >> $env:GITHUB_ENV
         echo "OPENSSL_INCLUDE_DIR=$opensslPath/include" >> $env:GITHUB_ENV
-
-        # If we're using our custom ARM64 build, also set library paths for linktime builds
-        if ($zipFile) {
-          echo "OPENSSL_CRYPTO_LIBRARY=$opensslPath/lib/libcrypto.lib" >> $env:GITHUB_ENV
-          echo "OPENSSL_SSL_LIBRARY=$opensslPath/lib/libssl.lib" >> $env:GITHUB_ENV
-        }
+        echo "OPENSSL_CRYPTO_LIBRARY=$opensslPath/lib/libcrypto.lib" >> $env:GITHUB_ENV
+        echo "OPENSSL_SSL_LIBRARY=$opensslPath/lib/libssl.lib" >> $env:GITHUB_ENV
 
         Write-Host "Using OpenSSL installation at: $opensslPath"
 
