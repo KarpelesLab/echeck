@@ -2,6 +2,7 @@
 #include "echeck_internal.h"
 #include "sgx_utils.h"
 #include <stdlib.h>
+#include <string.h>
 /* OpenSSL headers are accessed through openssl_runtime.h */
 
 /* We don't need this function anymore - the caller (verify_quote) initializes the structure */
