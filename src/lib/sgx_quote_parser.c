@@ -78,12 +78,11 @@ int extract_sgx_quote(void *cert_ptr, sgx_quote_buffer_t *quote_buffer) {
 
             /* Header information parsed (not printed in the updated Unix-like version) */
 
-            /* Verify the size makes sense */
+            /* Verify the size makes sense - reject if header claims more data than available */
             if (quote_size > raw_len - sizeof(sgx_quote_header_t)) {
-                fprintf(stderr, "SGX quote size in header (%u) exceeds available data (%d)\n",
-                        quote_size, raw_len - (int)sizeof(sgx_quote_header_t));
-                quote_size = raw_len - sizeof(sgx_quote_header_t);
-                /* Adjusted quote size */
+                fprintf(stderr, "Error: SGX quote size in header (%u) exceeds available data (%zu)\n",
+                        quote_size, raw_len - sizeof(sgx_quote_header_t));
+                return 0;
             }
 
             /* Allocate memory for the quote data (excluding the header) */
