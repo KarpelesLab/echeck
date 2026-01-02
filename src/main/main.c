@@ -37,12 +37,13 @@ void print_usage(const char *prog_name) {
     fprintf(stderr, "  --mrsigner=<hash>       Verify specific MRSIGNER value (hex)\n");
 }
 
-/* Convert hex string to binary */
+/* Convert hex string to binary - requires exact length match */
 int hex_to_bin(const char *hex, unsigned char *bin, size_t bin_size) {
     size_t hex_len = strlen(hex);
-    
-    /* Each byte needs 2 hex characters */
-    if (hex_len % 2 != 0 || hex_len / 2 > bin_size) {
+
+    /* Require exact length: each byte needs exactly 2 hex characters
+     * This prevents partial values for security-critical fields like MRENCLAVE/MRSIGNER */
+    if (hex_len != bin_size * 2) {
         return 0;
     }
     
