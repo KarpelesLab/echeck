@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #include "echeck.h"
 #include "echeck_internal.h"
@@ -71,13 +72,19 @@ int extract_pck_cert_chain(const sgx_quote_t *quote, sgx_cert_verification_resul
     }
 
     const uint8_t *cert_data = auth_data->cert_data;
-    
+
+    /* Validate cert_data_size before casting to int for BIO_new_mem_buf */
+    if (cert_data_size == 0 || cert_data_size > INT_MAX) {
+        fprintf(stderr, "Error: Invalid certificate data size: %u\n", cert_data_size);
+        return 0;
+    }
+
     if (is_verbose_mode()) {
         fprintf(stderr, "Found PCK certificate chain (%u bytes)\n", cert_data_size);
     }
-    
+
     /* Create a BIO for reading the certificate data */
-    BIO *bio = BIO_new_mem_buf(cert_data, cert_data_size);
+    BIO *bio = BIO_new_mem_buf(cert_data, (int)cert_data_size);
     if (!bio) {
         print_openssl_error("Failed to create BIO for certificate data");
         return 0;
