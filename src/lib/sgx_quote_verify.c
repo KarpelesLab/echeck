@@ -17,7 +17,7 @@ static int is_mr_value_valid(const unsigned char *mr_value, size_t size) {
 }
 
 /* Verify SGX quote */
-int verify_sgx_quote(const unsigned char *quote_data, int quote_len,
+int verify_sgx_quote(const unsigned char *quote_data, size_t quote_len,
                      echeck_verification_result_t *result) {
     int ret_val = 0;
 
@@ -28,7 +28,7 @@ int verify_sgx_quote(const unsigned char *quote_data, int quote_len,
     size_t min_quote_size = 48 + sizeof(sgx_report_body_t) + sizeof(uint32_t);
 
     if (quote_len < min_quote_size) {
-        fprintf(stderr, "SGX quote data too short (%d bytes), minimum required: %zu\n",
+        fprintf(stderr, "SGX quote data too short (%zu bytes), minimum required: %zu\n",
                 quote_len, min_quote_size);
         result->error_message = "Quote data too short";
         return 0;
@@ -47,7 +47,7 @@ int verify_sgx_quote(const unsigned char *quote_data, int quote_len,
 
     /* Check if signature length is valid */
     if (signature_len > 0 && quote_len < min_quote_size + signature_len) {
-        fprintf(stderr, "Quote data size (%d) smaller than expected (%zu)\n",
+        fprintf(stderr, "Quote data size (%zu) smaller than expected (%zu)\n",
                 quote_len, min_quote_size + signature_len);
         result->error_message = "Quote data size smaller than expected";
         return 0;

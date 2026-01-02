@@ -11,7 +11,7 @@
 typedef echeck_verification_result_t sgx_verification_result_t;
 
 /* Verify SGX quote using built-in CA certificates */
-int verify_sgx_quote(const unsigned char *quote_data, int quote_len,
+int verify_sgx_quote(const unsigned char *quote_data, size_t quote_len,
                      echeck_verification_result_t *result);
 
 /* Verify quote signature using public key from certificate */

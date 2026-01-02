@@ -9,7 +9,7 @@
 /* Result structure for quote extraction */
 typedef struct {
     unsigned char *data;
-    int length;
+    size_t length;
 } sgx_quote_buffer_t;
 
 /* Extract SGX quote extension from a certificate */

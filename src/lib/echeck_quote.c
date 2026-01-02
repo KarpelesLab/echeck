@@ -59,12 +59,7 @@ ECHECK_API echeck_quote_t* echeck_extract_quote(void *cert) {
         return NULL;
     }
 
-    /* Old implementation used sgx_quote_buffer_t structure */
-    unsigned char *data = NULL;
-    int data_size = 0;
-
-    /* Temporary solution: reuse existing extract_sgx_quote function */
-    /* When we fully implement the API, this will be rewritten properly */
+    /* Extract SGX quote from certificate */
     sgx_quote_buffer_t buffer = {NULL, 0};
     if (!extract_sgx_quote(cert, &buffer)) {
         return NULL;
