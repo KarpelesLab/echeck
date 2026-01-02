@@ -40,13 +40,15 @@ int verify_sgx_quote(const unsigned char *quote_data, size_t quote_len,
     /* Get signature information */
     uint32_t signature_len = quote->signature_len;
 
-    /* Handle cases where signature_len is 0 in the structure */
-    if (signature_len == 0 && quote_len > min_quote_size) {
-        signature_len = quote_len - min_quote_size;
+    /* Reject quotes with zero signature length - a valid quote must have a signature */
+    if (signature_len == 0) {
+        fprintf(stderr, "SGX quote has zero signature length - malformed quote\n");
+        result->error_message = "Quote has zero signature length";
+        return 0;
     }
 
     /* Check if signature length is valid (avoid integer overflow by using subtraction) */
-    if (signature_len > 0 && (quote_len - min_quote_size) < signature_len) {
+    if ((quote_len - min_quote_size) < signature_len) {
         fprintf(stderr, "Quote data size (%zu) smaller than expected (need %u more bytes for signature)\n",
                 quote_len, signature_len);
         result->error_message = "Quote data size smaller than expected";
