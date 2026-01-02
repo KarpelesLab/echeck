@@ -121,9 +121,10 @@ int extract_attestation_key(const sgx_quote_t *quote, EVP_PKEY **out_key) {
         return 0;
     }
     
-    /* Set the public key coordinates */
+    /* Set the public key coordinates
+     * EC_KEY_set_public_key_affine_coordinates validates the point is on the curve */
     if (EC_KEY_set_public_key_affine_coordinates(ec_key, x, y) != 1) {
-        print_openssl_error("Failed to set EC key coordinates");
+        print_openssl_error("Failed to set EC key coordinates - invalid point");
         BN_free(x);
         BN_free(y);
         EC_KEY_free(ec_key);
@@ -131,7 +132,19 @@ int extract_attestation_key(const sgx_quote_t *quote, EVP_PKEY **out_key) {
         EVP_PKEY_free(params);
         return 0;
     }
-    
+
+    /* Perform explicit key validation for defense-in-depth
+     * This checks: point is on curve, not at infinity, and in correct subgroup */
+    if (EC_KEY_check_key(ec_key) != 1) {
+        print_openssl_error("EC key validation failed - malformed public key");
+        BN_free(x);
+        BN_free(y);
+        EC_KEY_free(ec_key);
+        EVP_PKEY_free(pkey);
+        EVP_PKEY_free(params);
+        return 0;
+    }
+
     /* Set the EC_KEY into the EVP_PKEY */
     if (EVP_PKEY_set1_EC_KEY(pkey, ec_key) != 1) {
         print_openssl_error("Failed to set EC key in EVP_PKEY");

@@ -180,6 +180,7 @@ extern int (*EVP_DigestVerifyFinal)(EVP_MD_CTX *ctx, const unsigned char *sig, s
 extern EC_KEY* (*EC_KEY_new_by_curve_name)(int nid);
 extern void (*EC_KEY_free)(EC_KEY* key);
 extern int (*EC_KEY_set_public_key_affine_coordinates)(EC_KEY *key, BIGNUM *x, BIGNUM *y);
+extern int (*EC_KEY_check_key)(const EC_KEY *key);
 extern ECDSA_SIG* (*ECDSA_SIG_new)(void);
 extern void (*ECDSA_SIG_free)(ECDSA_SIG *sig);
 extern int (*ECDSA_SIG_set0)(ECDSA_SIG *sig, BIGNUM *r, BIGNUM *s);

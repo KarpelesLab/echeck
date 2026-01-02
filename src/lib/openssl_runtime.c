@@ -67,6 +67,7 @@ int (*EVP_DigestVerifyFinal)(EVP_MD_CTX *ctx, const unsigned char *sig, size_t s
 EC_KEY* (*EC_KEY_new_by_curve_name)(int nid) = NULL;
 void (*EC_KEY_free)(EC_KEY* key) = NULL;
 int (*EC_KEY_set_public_key_affine_coordinates)(EC_KEY *key, BIGNUM *x, BIGNUM *y) = NULL;
+int (*EC_KEY_check_key)(const EC_KEY *key) = NULL;
 ECDSA_SIG* (*ECDSA_SIG_new)(void) = NULL;
 void (*ECDSA_SIG_free)(ECDSA_SIG *sig) = NULL;
 int (*ECDSA_SIG_set0)(ECDSA_SIG *sig, BIGNUM *r, BIGNUM *s) = NULL;
@@ -374,6 +375,7 @@ int init_openssl_runtime(void) {
     LOAD_SYMBOL(libcrypto_handle, EC_KEY_new_by_curve_name);
     LOAD_SYMBOL(libcrypto_handle, EC_KEY_free);
     LOAD_SYMBOL(libcrypto_handle, EC_KEY_set_public_key_affine_coordinates);
+    LOAD_SYMBOL(libcrypto_handle, EC_KEY_check_key);
     LOAD_SYMBOL(libcrypto_handle, ECDSA_SIG_new);
     LOAD_SYMBOL(libcrypto_handle, ECDSA_SIG_free);
     LOAD_SYMBOL(libcrypto_handle, ECDSA_SIG_set0);
