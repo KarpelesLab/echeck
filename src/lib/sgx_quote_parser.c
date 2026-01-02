@@ -19,11 +19,11 @@ int extract_sgx_quote(void *cert_ptr, sgx_quote_buffer_t *quote_buffer) {
     quote_buffer->data = NULL;
     quote_buffer->length = 0;
 
-    /* Register the SGX OID if it's not already known */
+    /* Register the SGX OID (returns existing NID if already registered) */
     nid = OBJ_create(SGX_QUOTE_OID, "SGXQuote", "Intel SGX Quote Extension");
     if (nid == NID_undef) {
-        fprintf(stderr, "ERROR: OBJ_create failed!\n");
-        print_openssl_error("Error creating SGX Quote OID");
+        /* NID_undef only returned on actual errors, not for already-registered OIDs */
+        print_openssl_error("Failed to register SGX Quote OID");
         return 0;
     }
 
