@@ -262,11 +262,17 @@ func loadCertificate(filename string) (*x509.Certificate, error) {
 	var certPEM []byte
 	var err error
 
+	// Maximum certificate size (1MB is generous for PEM certificates)
+	const maxCertSize = 1 * 1024 * 1024
+
 	if filename == "-" {
-		// Read from stdin
-		certPEM, err = io.ReadAll(os.Stdin)
+		// Read from stdin with size limit to prevent memory exhaustion
+		certPEM, err = io.ReadAll(io.LimitReader(os.Stdin, maxCertSize))
 		if err != nil {
 			return nil, fmt.Errorf("failed to read from stdin: %v", err)
+		}
+		if len(certPEM) == maxCertSize {
+			return nil, fmt.Errorf("input exceeds maximum size of %d bytes", maxCertSize)
 		}
 	} else {
 		// Read from file
