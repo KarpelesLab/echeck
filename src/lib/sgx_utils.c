@@ -31,11 +31,19 @@ int extract_attestation_key(const sgx_quote_t *quote, EVP_PKEY **out_key) {
         fprintf(stderr, "Attestation key extraction only supported for ECDSA Quote v3\n");
         return 0;
     }
-    
+
+    /* Bounds check: signature must contain at least sig (64) + attest_pub_key (64) = 128 bytes */
+    uint32_t min_sig_len = 64 + 64;
+    if (quote->signature_len < min_sig_len) {
+        fprintf(stderr, "Error: Signature data too short for attestation key: %u < %u\n",
+                quote->signature_len, min_sig_len);
+        return 0;
+    }
+
     /* Get the signature data (located after the quote body) */
     uint32_t sig_data_offset = offsetof(sgx_quote_t, signature_len) + sizeof(uint32_t);
     const sgx_ql_ecdsa_sig_data_t *sig_data = (const sgx_ql_ecdsa_sig_data_t *)(((const uint8_t *)quote) + sig_data_offset);
-    
+
     /* The attestation public key is in the attest_pub_key field */
     /* This is a 64-byte buffer containing the x,y coordinates of the EC point */
     const uint8_t *pub_key_raw = sig_data->attest_pub_key;
