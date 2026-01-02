@@ -264,6 +264,15 @@ int verify_qe_report_signature(const sgx_quote_t *quote, EVP_PKEY *pck_pubkey) {
         return 0;
     }
 
+    /* Bounds check: signature must contain at least the ECDSA sig data structure
+     * 64 (sig) + 64 (attest_pub_key) + 384 (qe_report) + 64 (qe_report_sig) = 576 bytes */
+    uint32_t min_sig_len = 64 + 64 + sizeof(sgx_report_body_t) + 64;
+    if (quote->signature_len < min_sig_len) {
+        fprintf(stderr, "Error: Signature data too short for QE report verification: %u < %u\n",
+                quote->signature_len, min_sig_len);
+        return 0;
+    }
+
     /* Get the signature data structure */
     uint32_t sig_data_offset = offsetof(sgx_quote_t, signature_len) + sizeof(uint32_t);
     const sgx_ql_ecdsa_sig_data_t *sig_data = (const sgx_ql_ecdsa_sig_data_t *)(((const uint8_t *)quote) + sig_data_offset);
@@ -376,13 +385,23 @@ int verify_qe_report_data(const sgx_quote_t *quote) {
         return 0;
     }
 
+    /* Navigate to auth data section */
+    /* Offset: 64 (sig) + 64 (attest_pub_key) + 384 (qe_report) + 64 (qe_report_sig) = 576 */
+    uint32_t auth_data_offset = 64 + 64 + sizeof(sgx_report_body_t) + 64;
+
+    /* Bounds check: signature must contain at least auth_data header
+     * auth_data_size(2) + auth_data(32) = 34 bytes minimum after offset */
+    uint32_t min_sig_len = auth_data_offset + 34;
+    if (quote->signature_len < min_sig_len) {
+        fprintf(stderr, "Error: Signature data too short for auth data: %u < %u\n",
+                quote->signature_len, min_sig_len);
+        return 0;
+    }
+
     /* Get the signature data structure */
     uint32_t sig_data_offset = offsetof(sgx_quote_t, signature_len) + sizeof(uint32_t);
     const sgx_ql_ecdsa_sig_data_t *sig_data = (const sgx_ql_ecdsa_sig_data_t *)(((const uint8_t *)quote) + sig_data_offset);
 
-    /* Navigate to auth data section */
-    /* Offset: 64 (sig) + 64 (attest_pub_key) + 384 (qe_report) + 64 (qe_report_sig) = 576 */
-    uint32_t auth_data_offset = 64 + 64 + sizeof(sgx_report_body_t) + 64;
     const sgx_ql_auth_data_t *auth_data = (const sgx_ql_auth_data_t *)(((const uint8_t *)sig_data) + auth_data_offset);
 
     /* Verify auth data size */

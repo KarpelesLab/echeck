@@ -23,34 +23,54 @@ int extract_pck_cert_chain(const sgx_quote_t *quote, sgx_cert_verification_resul
         fprintf(stderr, "Error: PCK certificate chain extraction only supported for ECDSA Quote v3\n");
         return 0;
     }
-    
+
+    /* Get signature length and validate it's reasonable */
+    uint32_t signature_len = quote->signature_len;
+
+    /* Navigate to the authentication data section */
+    /* 64 bytes sig + 64 bytes attest_pub_key + sizeof(sgx_report_body_t) + 64 bytes qe_report_sig */
+    uint32_t auth_data_offset = 64 + 64 + sizeof(sgx_report_body_t) + 64;
+
+    /* Bounds check: ensure signature_len is large enough to contain auth_data header */
+    /* Auth data header: auth_data_size(2) + auth_data(32) + cert_type(2) + cert_data_size(4) = 40 bytes */
+    uint32_t min_sig_len = auth_data_offset + 40;
+    if (signature_len < min_sig_len) {
+        fprintf(stderr, "Error: Signature data too short for auth data header: %u < %u\n",
+                signature_len, min_sig_len);
+        return 0;
+    }
+
     /* Get the signature data (located after the quote body) */
     uint32_t sig_data_offset = offsetof(sgx_quote_t, signature_len) + sizeof(uint32_t);
     const sgx_ql_ecdsa_sig_data_t *sig_data = (const sgx_ql_ecdsa_sig_data_t *)(((const uint8_t *)quote) + sig_data_offset);
-    
-    /* Navigate to the authentication data section */
-    /* First we need to find the offset to the auth data within the signature data */
-    /* 64 bytes sig + 64 bytes attest_pub_key + sizeof(sgx_report_body_t) + 64 bytes qe_report_sig */
-    uint32_t auth_data_offset = 64 + 64 + sizeof(sgx_report_body_t) + 64;
-    
+
     /* Get the auth data structure */
     const sgx_ql_auth_data_t *auth_data = (const sgx_ql_auth_data_t *)(((const uint8_t *)sig_data) + auth_data_offset);
-    
+
     /* Verify we have valid auth data */
     if (auth_data->auth_data_size != 0x20) {
         fprintf(stderr, "Error: Unexpected auth data size: 0x%04x (expected 0x0020)\n", auth_data->auth_data_size);
         return 0;
     }
-    
+
     /* Check cert type */
     if (auth_data->cert_type != 0x0005) {
         fprintf(stderr, "Error: Unexpected certificate type: 0x%04x (expected 0x0005)\n", auth_data->cert_type);
         return 0;
     }
-    
-    /* Get the PCK certificate data */
+
+    /* Get the PCK certificate data size and validate bounds */
+    uint32_t cert_data_size = auth_data->cert_data_size;
+
+    /* Bounds check: ensure signature_len contains the full certificate data */
+    uint32_t cert_data_end = auth_data_offset + 40 + cert_data_size;
+    if (signature_len < cert_data_end) {
+        fprintf(stderr, "Error: Signature data too short for certificate data: %u < %u\n",
+                signature_len, cert_data_end);
+        return 0;
+    }
+
     const uint8_t *cert_data = auth_data->cert_data;
-    uint16_t cert_data_size = auth_data->cert_data_size;
     
     if (is_verbose_mode()) {
         fprintf(stderr, "Found PCK certificate chain (%u bytes)\n", cert_data_size);
