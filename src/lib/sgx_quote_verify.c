@@ -305,7 +305,7 @@ int analyze_quote_signature(const sgx_quote_t *quote, int signature_len) {
             /* Success */
             return 1;
         } else {
-            printf("Signature length (%u) doesn't match expected structure size (%zu)\n", 
+            printf("Signature length (%d) doesn't match expected structure size (%zu)\n",
                    signature_len, sizeof(sgx_ql_ecdsa_sig_data_t));
         }
     } else if (quote->version == 1 || quote->version == 2) {
