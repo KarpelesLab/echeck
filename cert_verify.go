@@ -137,11 +137,18 @@ func (q *Quote) parseAuthData() (*SGXAuthData, error) {
 
 	authData.CertDataSize = binary.LittleEndian.Uint32(sigData[offset : offset+4])
 	offset += 4
-	
+
+	// Validate certificate data size to prevent memory exhaustion DoS
+	// 64KB is more than enough for PEM certificate chains
+	const maxCertDataSize = 64 * 1024
+	if authData.CertDataSize > maxCertDataSize {
+		return nil, fmt.Errorf("certificate data size too large: %d (max %d)", authData.CertDataSize, maxCertDataSize)
+	}
+
 	if authData.CertType != 0x0005 {
 		return nil, fmt.Errorf("unexpected certificate type: 0x%04x (expected 0x0005)", authData.CertType)
 	}
-	
+
 	// Extract certificate data
 	if len(sigData) < offset+int(authData.CertDataSize) {
 		return nil, fmt.Errorf("signature data too short for certificate data: need %d bytes, have %d", 
