@@ -109,16 +109,18 @@ ECHECK_API int echeck_verify_quote_measurements(echeck_quote_t *quote,
         return 0;
     }
 
-    /* Check MRENCLAVE if provided */
+    /* Check MRENCLAVE if provided
+     * Use constant-time comparison to prevent timing attacks */
     if (expected_mrenclave) {
-        if (memcmp(quote->quote->report_body.mr_enclave, expected_mrenclave, 32) != 0) {
+        if (CRYPTO_memcmp(quote->quote->report_body.mr_enclave, expected_mrenclave, 32) != 0) {
             return 0;
         }
     }
 
-    /* Check MRSIGNER if provided */
+    /* Check MRSIGNER if provided
+     * Use constant-time comparison to prevent timing attacks */
     if (expected_mrsigner) {
-        if (memcmp(quote->quote->report_body.mr_signer, expected_mrsigner, 32) != 0) {
+        if (CRYPTO_memcmp(quote->quote->report_body.mr_signer, expected_mrsigner, 32) != 0) {
             return 0;
         }
     }
