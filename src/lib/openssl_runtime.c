@@ -171,6 +171,60 @@ static void *libcrypto_handle = NULL;
     #define LIBCRYPTO_NAME "libcrypto.so.3"
 #endif
 
+/* Forward declaration for symbol loading */
+static int load_openssl_symbols(const char *loaded_crypto_path, const char *loaded_ssl_path);
+
+/* Load OpenSSL from specific library paths */
+int init_openssl_runtime_with_paths(const char *libcrypto_path, const char *libssl_path) {
+    /* Return immediately if libraries are already loaded */
+    if (libssl_handle && libcrypto_handle) {
+        return 1;
+    }
+
+    if (!libcrypto_path || !libssl_path) {
+        fprintf(stderr, "Error: NULL library path provided\n");
+        return 0;
+    }
+
+#if defined(_WIN32) || defined(_WIN64)
+    libcrypto_handle = LoadLibraryA(libcrypto_path);
+    if (!libcrypto_handle) {
+        fprintf(stderr, "Failed to load libcrypto from %s: error code %lu\n",
+                libcrypto_path, GetLastError());
+        return 0;
+    }
+
+    libssl_handle = LoadLibraryA(libssl_path);
+    if (!libssl_handle) {
+        fprintf(stderr, "Failed to load libssl from %s: error code %lu\n",
+                libssl_path, GetLastError());
+        FreeLibrary(libcrypto_handle);
+        libcrypto_handle = NULL;
+        return 0;
+    }
+#else
+    dlerror(); /* Clear any previous errors */
+
+    libcrypto_handle = dlopen(libcrypto_path, RTLD_NOW | RTLD_GLOBAL);
+    if (!libcrypto_handle) {
+        fprintf(stderr, "Failed to load libcrypto from %s: %s\n",
+                libcrypto_path, dlerror());
+        return 0;
+    }
+
+    libssl_handle = dlopen(libssl_path, RTLD_NOW | RTLD_GLOBAL);
+    if (!libssl_handle) {
+        fprintf(stderr, "Failed to load libssl from %s: %s\n",
+                libssl_path, dlerror());
+        dlclose(libcrypto_handle);
+        libcrypto_handle = NULL;
+        return 0;
+    }
+#endif
+
+    return load_openssl_symbols(libcrypto_path, libssl_path);
+}
+
 int init_openssl_runtime(void) {
     /* Return immediately if libraries are already loaded */
     if (libssl_handle && libcrypto_handle) {
@@ -178,42 +232,50 @@ int init_openssl_runtime(void) {
     }
 
 #if defined(_WIN32) || defined(_WIN64)
-    /* Windows implementation using LoadLibrary */
-    
-    /* Define platform-specific search paths for Windows */
+    /* Windows implementation using LoadLibrary
+     *
+     * SECURITY: Search absolute paths FIRST to prevent DLL hijacking.
+     * On Windows, the default search order includes the current working
+     * directory, which could be controlled by an attacker. By trying
+     * absolute paths to known installation directories first, we reduce
+     * the risk of loading a malicious DLL. */
+
+    /* Define platform-specific search paths for Windows - absolute paths first */
     const char* crypto_paths[] = {
-        LIBCRYPTO_NAME,  /* Try the default name first */
 #if defined(_M_ARM64) || defined(__aarch64__)
-        /* ARM64-specific search paths */
+        /* ARM64-specific absolute paths first */
         "C:\\Program Files\\OpenSSL-Win64\\bin\\libcrypto-3-arm64.dll",
         "C:\\Program Files\\OpenSSL\\bin\\libcrypto-3-arm64.dll",
         "C:\\Program Files\\OpenSSL-ARM64\\bin\\libcrypto-3-arm64.dll",
 #else
-        /* x64 search paths */
+        /* x64 absolute paths first */
         "C:\\Program Files\\OpenSSL-Win64\\bin\\libcrypto-3-x64.dll",
         "C:\\Program Files\\OpenSSL\\bin\\libcrypto-3-x64.dll",
 #endif
         "C:\\OpenSSL-Win64\\bin\\libcrypto-3-x64.dll",
         "C:\\OpenSSL\\bin\\libcrypto-3-x64.dll",
-        "libcrypto-3.dll", /* Try for other named version too */
+        /* Default name as fallback (may search current directory - less secure) */
+        LIBCRYPTO_NAME,
+        "libcrypto-3.dll",
         NULL
     };
 
     const char* ssl_paths[] = {
-        LIBSSL_NAME,  /* Try the default name first */
 #if defined(_M_ARM64) || defined(__aarch64__)
-        /* ARM64-specific search paths */
+        /* ARM64-specific absolute paths first */
         "C:\\Program Files\\OpenSSL-Win64\\bin\\libssl-3-arm64.dll",
         "C:\\Program Files\\OpenSSL\\bin\\libssl-3-arm64.dll",
         "C:\\Program Files\\OpenSSL-ARM64\\bin\\libssl-3-arm64.dll",
 #else
-        /* x64 search paths */
+        /* x64 absolute paths first */
         "C:\\Program Files\\OpenSSL-Win64\\bin\\libssl-3-x64.dll",
         "C:\\Program Files\\OpenSSL\\bin\\libssl-3-x64.dll",
 #endif
         "C:\\OpenSSL-Win64\\bin\\libssl-3-x64.dll",
         "C:\\OpenSSL\\bin\\libssl-3-x64.dll",
-        "libssl-3.dll", /* Try for other named version too */
+        /* Default name as fallback (may search current directory - less secure) */
+        LIBSSL_NAME,
+        "libssl-3.dll",
         NULL
     };
 
@@ -329,12 +391,17 @@ int init_openssl_runtime(void) {
     }
 #endif
 
+    return load_openssl_symbols(loaded_crypto_path, loaded_ssl_path);
+}
+
+/* Helper function to load all OpenSSL symbols after libraries are loaded */
+static int load_openssl_symbols(const char *loaded_crypto_path, const char *loaded_ssl_path) {
     /* Load all required symbols from libcrypto */
     LOAD_SYMBOL(libcrypto_handle, BIO_new_file);
     LOAD_SYMBOL(libcrypto_handle, BIO_new_mem_buf);
     LOAD_SYMBOL(libcrypto_handle, BIO_free);
     LOAD_SYMBOL(libcrypto_handle, PEM_read_bio_X509);
-    
+
     LOAD_SYMBOL(libcrypto_handle, X509_free);
     LOAD_SYMBOL(libcrypto_handle, X509_get_subject_name);
     LOAD_SYMBOL(libcrypto_handle, X509_NAME_oneline);
@@ -354,7 +421,7 @@ int init_openssl_runtime(void) {
     LOAD_SYMBOL(libcrypto_handle, X509_STORE_CTX_get_error);
     LOAD_SYMBOL(libcrypto_handle, X509_STORE_get0_param);
     LOAD_SYMBOL(libcrypto_handle, X509_VERIFY_PARAM_set_flags);
-    
+
     LOAD_SYMBOL(libcrypto_handle, EVP_PKEY_free);
     LOAD_SYMBOL(libcrypto_handle, EVP_PKEY_get_base_id);
     LOAD_SYMBOL(libcrypto_handle, EVP_PKEY_new);
@@ -374,7 +441,7 @@ int init_openssl_runtime(void) {
     LOAD_SYMBOL(libcrypto_handle, EVP_DigestVerifyInit);
     LOAD_SYMBOL(libcrypto_handle, EVP_DigestVerifyUpdate);
     LOAD_SYMBOL(libcrypto_handle, EVP_DigestVerifyFinal);
-    
+
     LOAD_SYMBOL(libcrypto_handle, EC_KEY_new_by_curve_name);
     LOAD_SYMBOL(libcrypto_handle, EC_KEY_free);
     LOAD_SYMBOL(libcrypto_handle, EC_KEY_set_public_key_affine_coordinates);
@@ -385,10 +452,10 @@ int init_openssl_runtime(void) {
     LOAD_SYMBOL(libcrypto_handle, ECDSA_do_verify);
     LOAD_SYMBOL(libcrypto_handle, i2d_ECDSA_SIG);
     LOAD_SYMBOL(libcrypto_handle, i2d_PUBKEY);
-    
+
     LOAD_SYMBOL(libcrypto_handle, BN_bin2bn);
     LOAD_SYMBOL(libcrypto_handle, BN_free);
-    
+
     /* Load OPENSSL_sk_* functions (OpenSSL 3.0 compatible) */
     LOAD_SYMBOL(libcrypto_handle, OPENSSL_sk_new_null);
     LOAD_SYMBOL(libcrypto_handle, OPENSSL_sk_free);
@@ -396,22 +463,18 @@ int init_openssl_runtime(void) {
     LOAD_SYMBOL(libcrypto_handle, OPENSSL_sk_num);
     LOAD_SYMBOL(libcrypto_handle, OPENSSL_sk_value);
     LOAD_SYMBOL(libcrypto_handle, OPENSSL_sk_pop_free);
-    
-    /* Successfully loaded stack functions */
-    
+
     LOAD_SYMBOL(libcrypto_handle, ASN1_STRING_get0_data);
     LOAD_SYMBOL(libcrypto_handle, ASN1_STRING_length);
-    
+
     /* Make sure we load Object identifier functions */
     LOAD_SYMBOL(libcrypto_handle, OBJ_create);
     LOAD_SYMBOL(libcrypto_handle, OBJ_obj2nid);
-    
-    /* Successfully loaded object identifier functions */
-    
+
     LOAD_SYMBOL(libcrypto_handle, ERR_print_errors_fp);
     LOAD_SYMBOL(libcrypto_handle, ERR_peek_last_error);
     LOAD_SYMBOL(libcrypto_handle, ERR_clear_error);
-    
+
     /* Load SHA functions */
     LOAD_SYMBOL(libcrypto_handle, SHA256);
 
@@ -420,23 +483,18 @@ int init_openssl_runtime(void) {
 
     /* Load memory management functions */
     LOAD_SYMBOL(libcrypto_handle, CRYPTO_free);
-    
-    /* ERR_GET_LIB and ERR_GET_REASON are macros, not functions to load 
-     * We've defined our own macros above that operate directly on error codes */
-    
+
     /* In OpenSSL 3.0+, the initialization/cleanup functions are deprecated
      * OPENSSL_cleanup is required for cleanup operations */
     LOAD_SYMBOL(libcrypto_handle, OPENSSL_cleanup);
-    
+
     /* Successfully loaded all required symbols */
     if (is_verbose_mode()) {
         fprintf(stderr, "Successfully loaded OpenSSL libraries at runtime:\n");
-        fprintf(stderr, "  - libcrypto: %s\n", loaded_crypto_path);
-        fprintf(stderr, "  - libssl: %s\n", loaded_ssl_path);
+        fprintf(stderr, "  - libcrypto: %s\n", loaded_crypto_path ? loaded_crypto_path : "(unknown)");
+        fprintf(stderr, "  - libssl: %s\n", loaded_ssl_path ? loaded_ssl_path : "(unknown)");
     }
 
-    /* Successfully loaded all key OpenSSL functions */
-    
     return 1;
 }
 

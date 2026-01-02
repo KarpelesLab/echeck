@@ -245,8 +245,17 @@ extern void (*EVP_cleanup)(void);
 extern void (*ERR_free_strings)(void);
 extern void (*OPENSSL_cleanup)(void);  /* Modern equivalent of EVP_cleanup() + ERR_free_strings() */
 
-/* Load OpenSSL dynamically at runtime */
+/* Load OpenSSL dynamically at runtime using default search paths */
 extern int init_openssl_runtime(void);
+
+/* Load OpenSSL from specific library paths
+ * libcrypto_path: Full path to libcrypto library (e.g., "C:\\MyApp\\libcrypto-3-x64.dll")
+ * libssl_path: Full path to libssl library (e.g., "C:\\MyApp\\libssl-3-x64.dll")
+ * Returns 1 on success, 0 on failure
+ *
+ * This function is preferred for security-conscious applications as it avoids
+ * DLL search path vulnerabilities by using explicit absolute paths. */
+extern int init_openssl_runtime_with_paths(const char *libcrypto_path, const char *libssl_path);
 
 /* Clean up and unload OpenSSL libraries */
 extern void cleanup_openssl_runtime(void);
@@ -265,9 +274,15 @@ extern void cleanup_openssl_runtime(void);
 #include <openssl/ec.h>
 #include <openssl/crypto.h>
 
-/* In static linking mode, we just provide a stub function that always succeeds */
+/* In static linking mode, we just provide stub functions that always succeed */
 static inline int init_openssl_runtime(void) {
     return 1;
+}
+
+static inline int init_openssl_runtime_with_paths(const char *libcrypto_path, const char *libssl_path) {
+    (void)libcrypto_path;
+    (void)libssl_path;
+    return 1; /* Static linking - paths are ignored */
 }
 
 #endif /* OPENSSL_RUNTIME_LINK */
