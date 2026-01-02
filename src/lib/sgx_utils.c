@@ -167,11 +167,18 @@ int extract_ecdsa_signature(const sgx_quote_t *quote,
         fprintf(stderr, "Signature extraction only supported for ECDSA Quote v3\n");
         return 0;
     }
-    
+
+    /* Bounds check: signature must contain at least 64 bytes for the ECDSA signature (R + S) */
+    if (quote->signature_len < 64) {
+        fprintf(stderr, "Error: Signature data too short for ECDSA signature: %u < 64\n",
+                quote->signature_len);
+        return 0;
+    }
+
     /* Get the signature data (located after the quote body) */
     uint32_t sig_data_offset = offsetof(sgx_quote_t, signature_len) + sizeof(uint32_t);
     const sgx_ql_ecdsa_sig_data_t *sig_data = (const sgx_ql_ecdsa_sig_data_t *)(((const uint8_t *)quote) + sig_data_offset);
-    
+
     /* The signature is in the sig field - first 32 bytes are R, next 32 bytes are S */
     const uint8_t *sig_raw = sig_data->sig;
     

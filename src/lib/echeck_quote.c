@@ -83,6 +83,11 @@ ECHECK_API int echeck_get_quote_info(echeck_quote_t *quote, echeck_quote_info_t 
         return 0;
     }
 
+    /* Validate quote data is large enough to contain the report body */
+    if (!quote->quote || quote->data_size < sizeof(sgx_quote_t)) {
+        return 0;
+    }
+
     /* Copy the quote information */
     memcpy(info->mr_enclave, quote->quote->report_body.mr_enclave, 32);
     memcpy(info->mr_signer, quote->quote->report_body.mr_signer, 32);
@@ -96,6 +101,11 @@ ECHECK_API int echeck_verify_quote_measurements(echeck_quote_t *quote,
                                         const uint8_t *expected_mrenclave,
                                         const uint8_t *expected_mrsigner) {
     if (!quote || (!expected_mrenclave && !expected_mrsigner)) {
+        return 0;
+    }
+
+    /* Validate quote data is large enough to contain the report body */
+    if (!quote->quote || quote->data_size < sizeof(sgx_quote_t)) {
         return 0;
     }
 
