@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/binary"
@@ -307,10 +308,9 @@ func (q *Quote) VerifyMeasurements(expectedMREnclave, expectedMRSigner []byte) b
 		if len(expectedMREnclave) != 32 {
 			return false
 		}
-		for i := 0; i < 32; i++ {
-			if q.Quote.ReportBody.MREnclave[i] != expectedMREnclave[i] {
-				return false
-			}
+		// Use constant-time comparison to prevent timing attacks
+		if subtle.ConstantTimeCompare(q.Quote.ReportBody.MREnclave[:], expectedMREnclave) != 1 {
+			return false
 		}
 	}
 
@@ -318,10 +318,9 @@ func (q *Quote) VerifyMeasurements(expectedMREnclave, expectedMRSigner []byte) b
 		if len(expectedMRSigner) != 32 {
 			return false
 		}
-		for i := 0; i < 32; i++ {
-			if q.Quote.ReportBody.MRSigner[i] != expectedMRSigner[i] {
-				return false
-			}
+		// Use constant-time comparison to prevent timing attacks
+		if subtle.ConstantTimeCompare(q.Quote.ReportBody.MRSigner[:], expectedMRSigner) != 1 {
+			return false
 		}
 	}
 
@@ -568,10 +567,9 @@ func (q *Quote) verifyQEReportData() error {
 	expectedHash := h.Sum(nil)
 
 	// Compare with QE Report's report_data (first 32 bytes)
-	for i := 0; i < 32; i++ {
-		if expectedHash[i] != qeReportData[i] {
-			return fmt.Errorf("QE Report report_data does not match expected hash of attestation key")
-		}
+	// Use constant-time comparison to prevent timing attacks
+	if subtle.ConstantTimeCompare(expectedHash[:32], qeReportData[:32]) != 1 {
+		return fmt.Errorf("QE Report report_data does not match expected hash of attestation key")
 	}
 
 	return nil
@@ -599,12 +597,11 @@ func VerifyQuote(cert *x509.Certificate, quote *Quote) error {
 	pubKeyHash := sha256.Sum256(pubKeyDER)
 
 	// Check if the first 32 bytes of report data match the public key hash
-	for i := 0; i < 32; i++ {
-		if quote.Quote.ReportBody.ReportData[i] != pubKeyHash[i] {
-			return ErrReportDataMismatch{
-				Expected: pubKeyHash[:],
-				Actual:   quote.Quote.ReportBody.ReportData[:],
-			}
+	// Use constant-time comparison to prevent timing attacks
+	if subtle.ConstantTimeCompare(quote.Quote.ReportBody.ReportData[:32], pubKeyHash[:]) != 1 {
+		return ErrReportDataMismatch{
+			Expected: pubKeyHash[:],
+			Actual:   quote.Quote.ReportBody.ReportData[:],
 		}
 	}
 
