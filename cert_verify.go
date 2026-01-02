@@ -167,29 +167,38 @@ func (q *Quote) parseAuthData() (*SGXAuthData, error) {
 
 // parsePEMCertificates parses multiple PEM certificates from data
 func parsePEMCertificates(data []byte) ([]*x509.Certificate, error) {
+	// Limit certificate chain depth to prevent resource exhaustion
+	// SGX chains are typically: PCK -> Intermediate -> Root (3 certs)
+	const maxCertChainLength = 10
+
 	var certs []*x509.Certificate
 	remaining := data
-	
+
 	for len(remaining) > 0 {
 		block, rest := pem.Decode(remaining)
 		if block == nil {
 			break
 		}
-		
+
 		if block.Type != "CERTIFICATE" {
 			remaining = rest
 			continue
 		}
-		
+
 		cert, err := x509.ParseCertificate(block.Bytes)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse certificate: %v", err)
 		}
-		
+
 		certs = append(certs, cert)
 		remaining = rest
+
+		// Enforce chain depth limit
+		if len(certs) >= maxCertChainLength {
+			break
+		}
 	}
-	
+
 	return certs, nil
 }
 
