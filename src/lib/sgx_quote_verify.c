@@ -120,8 +120,11 @@ int verify_sgx_quote(const unsigned char *quote_data, size_t quote_len,
             }
         }
     } else {
-        /* For other quote versions, just validate structure */
-        result->checks_passed++;
+        /* EPID quotes (v1/v2) require Intel Attestation Service (IAS) for signature
+         * verification, which is not implemented. Do NOT pass the signature check
+         * for unverified signatures - this would be a security bypass. */
+        result->signature_valid = 0;
+        /* Note: checks_passed is NOT incremented, so verification will fail */
     }
 
     /* Determine if verification passed */
