@@ -32,7 +32,8 @@ int extract_attestation_key(const sgx_quote_t *quote, EVP_PKEY **out_key) {
         return 0;
     }
 
-    /* Bounds check: signature must contain at least sig (64) + attest_pub_key (64) = 128 bytes */
+    /* Bounds check: signature must contain at least sig (64) + attest_pub_key (64) = 128 bytes
+     * This validates that sig_data pointer arithmetic below will access valid memory */
     uint32_t min_sig_len = 64 + 64;
     if (quote->signature_len < min_sig_len) {
         fprintf(stderr, "Error: Signature data too short for attestation key: %u < %u\n",
@@ -40,7 +41,9 @@ int extract_attestation_key(const sgx_quote_t *quote, EVP_PKEY **out_key) {
         return 0;
     }
 
-    /* Get the signature data (located after the quote body) */
+    /* Get the signature data (located after the quote body)
+     * SAFETY: The bounds check above ensures signature_len >= 128, which covers
+     * the sig (64 bytes) and attest_pub_key (64 bytes) fields we access below */
     uint32_t sig_data_offset = offsetof(sgx_quote_t, signature_len) + sizeof(uint32_t);
     const sgx_ql_ecdsa_sig_data_t *sig_data = (const sgx_ql_ecdsa_sig_data_t *)(((const uint8_t *)quote) + sig_data_offset);
 
@@ -188,7 +191,9 @@ int extract_ecdsa_signature(const sgx_quote_t *quote,
         return 0;
     }
 
-    /* Get the signature data (located after the quote body) */
+    /* Get the signature data (located after the quote body)
+     * SAFETY: The bounds check above ensures signature_len >= 64, which covers
+     * the sig (64 bytes) field we access below for R and S components */
     uint32_t sig_data_offset = offsetof(sgx_quote_t, signature_len) + sizeof(uint32_t);
     const sgx_ql_ecdsa_sig_data_t *sig_data = (const sgx_ql_ecdsa_sig_data_t *)(((const uint8_t *)quote) + sig_data_offset);
 
@@ -301,7 +306,9 @@ int verify_qe_report_signature(const sgx_quote_t *quote, EVP_PKEY *pck_pubkey) {
         return 0;
     }
 
-    /* Get the signature data structure */
+    /* Get the signature data structure
+     * SAFETY: The bounds check above ensures signature_len >= 576, which covers
+     * sig (64) + attest_pub_key (64) + qe_report (384) + qe_report_sig (64) bytes */
     uint32_t sig_data_offset = offsetof(sgx_quote_t, signature_len) + sizeof(uint32_t);
     const sgx_ql_ecdsa_sig_data_t *sig_data = (const sgx_ql_ecdsa_sig_data_t *)(((const uint8_t *)quote) + sig_data_offset);
 
@@ -426,7 +433,9 @@ int verify_qe_report_data(const sgx_quote_t *quote) {
         return 0;
     }
 
-    /* Get the signature data structure */
+    /* Get the signature data structure
+     * SAFETY: The bounds check above ensures signature_len >= auth_data_offset + 34,
+     * which covers all fields up through auth_data_size(2) + auth_data(32) bytes */
     uint32_t sig_data_offset = offsetof(sgx_quote_t, signature_len) + sizeof(uint32_t);
     const sgx_ql_ecdsa_sig_data_t *sig_data = (const sgx_ql_ecdsa_sig_data_t *)(((const uint8_t *)quote) + sig_data_offset);
 
