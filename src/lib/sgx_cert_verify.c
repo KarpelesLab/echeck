@@ -89,22 +89,24 @@ int extract_pck_cert_chain(const sgx_quote_t *quote, sgx_cert_verification_resul
         print_openssl_error("Failed to create BIO for certificate data");
         return 0;
     }
-    
+
     /* The certificate data contains a chain of PEM certificates */
     /* Read each certificate from the chain */
+    /* Limit to prevent resource exhaustion from malicious quotes */
+    #define MAX_CERT_CHAIN_LENGTH 10
     X509 *cert = NULL;
     int cert_count = 0;
-    
+
     while ((cert = PEM_read_bio_X509(bio, NULL, NULL, NULL)) != NULL) {
         cert_count++;
-        
+
         /* Get certificate subject name */
         char subject[256];
         X509_NAME_oneline(X509_get_subject_name(cert), subject, sizeof(subject));
         if (is_verbose_mode()) {
             fprintf(stderr, "Certificate %d: %s\n", cert_count, subject);
         }
-        
+
         /* Store the certificates based on their position in the chain */
         if (cert_count == 1) {
             /* First certificate is the leaf (PCK) certificate */
@@ -112,9 +114,18 @@ int extract_pck_cert_chain(const sgx_quote_t *quote, sgx_cert_verification_resul
         } else if (cert_count == 2) {
             /* Second certificate is the intermediate certificate */
             result->intermediate_cert = cert;
+            /* We have all the certificates we need, stop parsing */
+            break;
         } else {
-            /* We don't need more than the leaf and intermediate certs */
+            /* Should not reach here, but free just in case */
             X509_free(cert);
+        }
+
+        /* Safety limit to prevent resource exhaustion */
+        if (cert_count >= MAX_CERT_CHAIN_LENGTH) {
+            fprintf(stderr, "Error: Certificate chain exceeds maximum length (%d)\n",
+                    MAX_CERT_CHAIN_LENGTH);
+            break;
         }
     }
     
