@@ -180,47 +180,56 @@ int main(int argc, char *argv[]) {
                 verify_result.report_data_matches_cert ? "Passed" : "Failed");
     }
 
-    /* Verify custom MRENCLAVE if specified */
-    if (opts.mrenclave) {
+    /* Verify custom MRENCLAVE/MRSIGNER if specified
+     * Use the library's echeck_verify_quote_measurements() which uses constant-time
+     * comparison (CRYPTO_memcmp) to prevent timing attacks */
+    if (opts.mrenclave || opts.mrsigner) {
         unsigned char expected_mrenclave[32];
-        if (!hex_to_bin(opts.mrenclave, expected_mrenclave, sizeof(expected_mrenclave))) {
-            fprintf(stderr, "Error: Invalid MRENCLAVE format (expected 64 hex characters)\n");
-            echeck_free_quote(quote_obj);
-            echeck_free_certificate(cert);
-            return 1;
-        }
-
-        if (memcmp(quote_info.mr_enclave, expected_mrenclave, sizeof(expected_mrenclave)) != 0) {
-            fprintf(stderr, "Error: MRENCLAVE value does not match expected value\n");
-            echeck_free_quote(quote_obj);
-            echeck_free_certificate(cert);
-            return 1;
-        }
-
-        if (opts.verbose && !opts.quiet) {
-            fprintf(stdout, "MRENCLAVE verification passed\n");
-        }
-    }
-
-    /* Verify custom MRSIGNER if specified */
-    if (opts.mrsigner) {
         unsigned char expected_mrsigner[32];
-        if (!hex_to_bin(opts.mrsigner, expected_mrsigner, sizeof(expected_mrsigner))) {
-            fprintf(stderr, "Error: Invalid MRSIGNER format (expected 64 hex characters)\n");
-            echeck_free_quote(quote_obj);
-            echeck_free_certificate(cert);
-            return 1;
+        unsigned char *mrenclave_ptr = NULL;
+        unsigned char *mrsigner_ptr = NULL;
+
+        if (opts.mrenclave) {
+            if (!hex_to_bin(opts.mrenclave, expected_mrenclave, sizeof(expected_mrenclave))) {
+                fprintf(stderr, "Error: Invalid MRENCLAVE format (expected 64 hex characters)\n");
+                echeck_free_quote(quote_obj);
+                echeck_free_certificate(cert);
+                return 1;
+            }
+            mrenclave_ptr = expected_mrenclave;
         }
 
-        if (memcmp(quote_info.mr_signer, expected_mrsigner, sizeof(expected_mrsigner)) != 0) {
-            fprintf(stderr, "Error: MRSIGNER value does not match expected value\n");
+        if (opts.mrsigner) {
+            if (!hex_to_bin(opts.mrsigner, expected_mrsigner, sizeof(expected_mrsigner))) {
+                fprintf(stderr, "Error: Invalid MRSIGNER format (expected 64 hex characters)\n");
+                echeck_free_quote(quote_obj);
+                echeck_free_certificate(cert);
+                return 1;
+            }
+            mrsigner_ptr = expected_mrsigner;
+        }
+
+        /* Use library function with constant-time comparison */
+        if (!echeck_verify_quote_measurements(quote_obj, mrenclave_ptr, mrsigner_ptr)) {
+            if (opts.mrenclave && opts.mrsigner) {
+                fprintf(stderr, "Error: MRENCLAVE or MRSIGNER value does not match expected value\n");
+            } else if (opts.mrenclave) {
+                fprintf(stderr, "Error: MRENCLAVE value does not match expected value\n");
+            } else {
+                fprintf(stderr, "Error: MRSIGNER value does not match expected value\n");
+            }
             echeck_free_quote(quote_obj);
             echeck_free_certificate(cert);
             return 1;
         }
 
         if (opts.verbose && !opts.quiet) {
-            fprintf(stdout, "MRSIGNER verification passed\n");
+            if (opts.mrenclave) {
+                fprintf(stdout, "MRENCLAVE verification passed\n");
+            }
+            if (opts.mrsigner) {
+                fprintf(stdout, "MRSIGNER verification passed\n");
+            }
         }
     }
     
