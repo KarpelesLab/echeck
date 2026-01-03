@@ -83,24 +83,17 @@ jobs:
         name: echeck-linux-${{ matrix.arch }}-${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}
         path: package/*.tar.gz
 
-  build-macos:
-    name: Build on macOS Universal (${{ matrix.link-type }} OpenSSL)
+  # macOS Runtime builds - Universal binaries (no OpenSSL linking at build time)
+  build-macos-runtime:
+    name: Build on macOS Universal (Runtime OpenSSL)
     runs-on: macos-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        link-type: [Linktime, Runtime]
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install OpenSSL (Universal)
+    - name: Install OpenSSL (for headers)
       run: |
-        # Install OpenSSL for native architecture
         brew install openssl@3 || true
-
-        # For universal builds, we need OpenSSL headers but will link at runtime
-        # or use the system OpenSSL for linktime builds
         echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
         echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@3)/include" >> $GITHUB_ENV
 
@@ -108,36 +101,22 @@ jobs:
       run: |
         mkdir -p build-arm64
         cd build-arm64
-        if [ "${{ matrix.link-type }}" == "Runtime" ]; then
-          cmake -DOPENSSL_RUNTIME_LINK=ON \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" \
-            -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR \
-            -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
-        else
-          cmake -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" \
-            -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR \
-            -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
-        fi
+        cmake -DOPENSSL_RUNTIME_LINK=ON \
+          -DCMAKE_OSX_ARCHITECTURES=arm64 \
+          -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" \
+          -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR \
+          -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
         make VERBOSE=1
 
     - name: Build for x86_64
       run: |
         mkdir -p build-x86_64
         cd build-x86_64
-        if [ "${{ matrix.link-type }}" == "Runtime" ]; then
-          cmake -DOPENSSL_RUNTIME_LINK=ON \
-            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
-            -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" \
-            -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR \
-            -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
-        else
-          cmake -DCMAKE_OSX_ARCHITECTURES=x86_64 \
-            -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" \
-            -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR \
-            -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
-        fi
+        cmake -DOPENSSL_RUNTIME_LINK=ON \
+          -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+          -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" \
+          -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR \
+          -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
         make VERBOSE=1
 
     - name: Create Universal Binaries
@@ -156,39 +135,146 @@ jobs:
     - name: Run tests
       run: |
         cd build-arm64
-        # Set DYLD_LIBRARY_PATH for macOS runtime tests
         export DYLD_LIBRARY_PATH=/opt/homebrew/opt/openssl@3/lib:$DYLD_LIBRARY_PATH
         ctest --output-on-failure
 
     - name: Create package
       run: |
         mkdir -p package
-        # Use release tag if available, otherwise use date
         if [ "${{ github.event_name }}" == "release" ]; then
           VERSION="${{ github.event.release.tag_name }}"
         else
           VERSION="$(date +%Y%m%d)"
         fi
-        LINK_TYPE="${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}"
-        ARTIFACT_NAME="echeck-macos-universal-${VERSION}-${LINK_TYPE}"
+        ARTIFACT_NAME="echeck-macos-universal-${VERSION}-runtime"
         mkdir -p "package/$ARTIFACT_NAME/bin"
         mkdir -p "package/$ARTIFACT_NAME/lib"
         mkdir -p "package/$ARTIFACT_NAME/include/echeck"
 
-        # Copy universal binaries
         cp build-universal/echeck "package/$ARTIFACT_NAME/bin/"
         cp build-universal/libecheck.a "package/$ARTIFACT_NAME/lib/"
         cp include/echeck.h "package/$ARTIFACT_NAME/include/echeck/"
         cp README.md LICENSE* "package/$ARTIFACT_NAME/" 2>/dev/null || true
 
-        # Create tarball
         cd package
         tar -czvf "$ARTIFACT_NAME.tar.gz" "$ARTIFACT_NAME"
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: echeck-macos-universal-${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}
+        name: echeck-macos-universal-runtime
+        path: package/*.tar.gz
+
+  # macOS Linktime builds - Build x64 first, then combine into universal on ARM64
+  build-macos-linktime-x64:
+    name: Build on macOS x64 (Linktime OpenSSL)
+    runs-on: macos-13
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install OpenSSL
+      run: |
+        brew install openssl@3 || true
+        echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
+        echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@3)/include" >> $GITHUB_ENV
+
+    - name: Configure and Build
+      run: |
+        mkdir -p build
+        cd build
+        cmake -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" \
+          -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR \
+          -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
+        make VERBOSE=1
+
+    - name: Run tests
+      run: |
+        cd build
+        export DYLD_LIBRARY_PATH=/usr/local/opt/openssl@3/lib:$DYLD_LIBRARY_PATH
+        ctest --output-on-failure
+
+    - name: Upload x64 binaries for universal build
+      uses: actions/upload-artifact@v4
+      with:
+        name: macos-x64-linktime-binaries
+        path: |
+          build/echeck
+          build/libecheck.a
+
+  build-macos-linktime-universal:
+    name: Build on macOS Universal (Linktime OpenSSL)
+    runs-on: macos-latest
+    needs: build-macos-linktime-x64
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install OpenSSL
+      run: |
+        brew install openssl@3 || true
+        echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
+        echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@3)/include" >> $GITHUB_ENV
+
+    - name: Configure and Build ARM64
+      run: |
+        mkdir -p build-arm64
+        cd build-arm64
+        cmake -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" \
+          -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR \
+          -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
+        make VERBOSE=1
+
+    - name: Download x64 binaries
+      uses: actions/download-artifact@v4
+      with:
+        name: macos-x64-linktime-binaries
+        path: build-x64
+
+    - name: Create Universal Binaries
+      run: |
+        mkdir -p build-universal
+
+        # Create universal binaries using lipo
+        lipo -create build-arm64/echeck build-x64/echeck -output build-universal/echeck
+        lipo -create build-arm64/libecheck.a build-x64/libecheck.a -output build-universal/libecheck.a
+
+        # Verify universal binaries
+        echo "Verifying universal binary architectures:"
+        lipo -info build-universal/echeck
+        lipo -info build-universal/libecheck.a
+
+    - name: Run tests
+      run: |
+        cd build-arm64
+        export DYLD_LIBRARY_PATH=/opt/homebrew/opt/openssl@3/lib:$DYLD_LIBRARY_PATH
+        ctest --output-on-failure
+
+    - name: Create package
+      run: |
+        mkdir -p package
+        if [ "${{ github.event_name }}" == "release" ]; then
+          VERSION="${{ github.event.release.tag_name }}"
+        else
+          VERSION="$(date +%Y%m%d)"
+        fi
+        ARTIFACT_NAME="echeck-macos-universal-${VERSION}-linktime"
+        mkdir -p "package/$ARTIFACT_NAME/bin"
+        mkdir -p "package/$ARTIFACT_NAME/lib"
+        mkdir -p "package/$ARTIFACT_NAME/include/echeck"
+
+        cp build-universal/echeck "package/$ARTIFACT_NAME/bin/"
+        cp build-universal/libecheck.a "package/$ARTIFACT_NAME/lib/"
+        cp include/echeck.h "package/$ARTIFACT_NAME/include/echeck/"
+        cp README.md LICENSE* "package/$ARTIFACT_NAME/" 2>/dev/null || true
+
+        cd package
+        tar -czvf "$ARTIFACT_NAME.tar.gz" "$ARTIFACT_NAME"
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: echeck-macos-universal-linktime
         path: package/*.tar.gz
 
   build-windows:
@@ -850,7 +936,7 @@ jobs:
     name: Upload artifacts to release
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
-    needs: [build-linux, build-macos, build-windows, build-windows-arm64]
+    needs: [build-linux, build-macos-runtime, build-macos-linktime-universal, build-windows, build-windows-arm64]
     
     steps:
     - name: Download all artifacts
