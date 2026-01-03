@@ -10,8 +10,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-ubuntu:
-    name: Build on Ubuntu ${{ matrix.arch }} (${{ matrix.link-type }} OpenSSL)
+  build-linux:
+    name: Build on Linux ${{ matrix.arch }} (${{ matrix.link-type }} OpenSSL)
     runs-on: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
@@ -55,17 +55,24 @@ jobs:
     - name: Create package
       run: |
         mkdir -p package
-        ARTIFACT_NAME="echeck-ubuntu-${{ matrix.arch }}-$(date +%Y%m%d)-${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}"
+        # Use release tag if available, otherwise use date
+        if [ "${{ github.event_name }}" == "release" ]; then
+          VERSION="${{ github.event.release.tag_name }}"
+        else
+          VERSION="$(date +%Y%m%d)"
+        fi
+        LINK_TYPE="${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}"
+        ARTIFACT_NAME="echeck-linux-${{ matrix.arch }}-${VERSION}-${LINK_TYPE}"
         mkdir -p "package/$ARTIFACT_NAME/bin"
         mkdir -p "package/$ARTIFACT_NAME/lib"
         mkdir -p "package/$ARTIFACT_NAME/include/echeck"
-        
+
         # Copy files
         cp build/echeck "package/$ARTIFACT_NAME/bin/"
         cp build/libecheck.a "package/$ARTIFACT_NAME/lib/"
         cp include/echeck.h "package/$ARTIFACT_NAME/include/echeck/"
         cp README.md LICENSE* "package/$ARTIFACT_NAME/" 2>/dev/null || true
-        
+
         # Create tarball
         cd package
         tar -czvf "$ARTIFACT_NAME.tar.gz" "$ARTIFACT_NAME"
@@ -73,46 +80,82 @@ jobs:
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: echeck-ubuntu-${{ matrix.arch }}-${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}
+        name: echeck-linux-${{ matrix.arch }}-${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}
         path: package/*.tar.gz
 
   build-macos:
-    name: Build on macOS (${{ matrix.link-type }} OpenSSL)
+    name: Build on macOS Universal (${{ matrix.link-type }} OpenSSL)
     runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
         link-type: [Linktime, Runtime]
-    
+
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install OpenSSL
+    - name: Install OpenSSL (Universal)
       run: |
+        # Install OpenSSL for native architecture
         brew install openssl@3 || true
+
+        # For universal builds, we need OpenSSL headers but will link at runtime
+        # or use the system OpenSSL for linktime builds
         echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
         echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@3)/include" >> $GITHUB_ENV
 
-    - name: Configure CMake
+    - name: Build for ARM64
       run: |
-        mkdir -p build
-        cd build
+        mkdir -p build-arm64
+        cd build-arm64
         if [ "${{ matrix.link-type }}" == "Runtime" ]; then
-          cmake -DOPENSSL_RUNTIME_LINK=ON -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" \
-            -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
+          cmake -DOPENSSL_RUNTIME_LINK=ON \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" \
+            -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR \
+            -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
         else
-          cmake -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" \
-            -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
+          cmake -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" \
+            -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR \
+            -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
         fi
-
-    - name: Build
-      run: |
-        cd build
         make VERBOSE=1
+
+    - name: Build for x86_64
+      run: |
+        mkdir -p build-x86_64
+        cd build-x86_64
+        if [ "${{ matrix.link-type }}" == "Runtime" ]; then
+          cmake -DOPENSSL_RUNTIME_LINK=ON \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" \
+            -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR \
+            -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
+        else
+          cmake -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DCMAKE_C_FLAGS="-I$OPENSSL_INCLUDE_DIR" \
+            -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR \
+            -DOPENSSL_INCLUDE_DIR=$OPENSSL_INCLUDE_DIR ..
+        fi
+        make VERBOSE=1
+
+    - name: Create Universal Binaries
+      run: |
+        mkdir -p build-universal
+
+        # Create universal binary using lipo
+        lipo -create build-arm64/echeck build-x86_64/echeck -output build-universal/echeck
+        lipo -create build-arm64/libecheck.a build-x86_64/libecheck.a -output build-universal/libecheck.a
+
+        # Verify universal binaries
+        echo "Verifying universal binary architectures:"
+        lipo -info build-universal/echeck
+        lipo -info build-universal/libecheck.a
 
     - name: Run tests
       run: |
-        cd build
+        cd build-arm64
         # Set DYLD_LIBRARY_PATH for macOS runtime tests
         export DYLD_LIBRARY_PATH=/opt/homebrew/opt/openssl@3/lib:$DYLD_LIBRARY_PATH
         ctest --output-on-failure
@@ -120,17 +163,24 @@ jobs:
     - name: Create package
       run: |
         mkdir -p package
-        ARTIFACT_NAME="echeck-macos-$(date +%Y%m%d)-${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}"
+        # Use release tag if available, otherwise use date
+        if [ "${{ github.event_name }}" == "release" ]; then
+          VERSION="${{ github.event.release.tag_name }}"
+        else
+          VERSION="$(date +%Y%m%d)"
+        fi
+        LINK_TYPE="${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}"
+        ARTIFACT_NAME="echeck-macos-universal-${VERSION}-${LINK_TYPE}"
         mkdir -p "package/$ARTIFACT_NAME/bin"
         mkdir -p "package/$ARTIFACT_NAME/lib"
         mkdir -p "package/$ARTIFACT_NAME/include/echeck"
-        
-        # Copy files
-        cp build/echeck "package/$ARTIFACT_NAME/bin/"
-        cp build/libecheck.a "package/$ARTIFACT_NAME/lib/"
+
+        # Copy universal binaries
+        cp build-universal/echeck "package/$ARTIFACT_NAME/bin/"
+        cp build-universal/libecheck.a "package/$ARTIFACT_NAME/lib/"
         cp include/echeck.h "package/$ARTIFACT_NAME/include/echeck/"
         cp README.md LICENSE* "package/$ARTIFACT_NAME/" 2>/dev/null || true
-        
+
         # Create tarball
         cd package
         tar -czvf "$ARTIFACT_NAME.tar.gz" "$ARTIFACT_NAME"
@@ -138,7 +188,7 @@ jobs:
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: echeck-macos-${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}
+        name: echeck-macos-universal-${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}
         path: package/*.tar.gz
 
   build-windows:
@@ -259,25 +309,32 @@ jobs:
       run: |
         $linkType = "${{ matrix.link-type }}"
         $linkTypeLower = if ($linkType -eq "Runtime") { "runtime" } else { "linktime" }
-        
+
+        # Use release tag if available, otherwise use date
+        if ("${{ github.event_name }}" -eq "release") {
+            $VERSION = "${{ github.event.release.tag_name }}"
+        } else {
+            $VERSION = Get-Date -Format 'yyyyMMdd'
+        }
+
         # Create artifact directory
-        $ARTIFACT_NAME = "echeck-windows-x64-$(Get-Date -Format 'yyyyMMdd')-$linkTypeLower"
+        $ARTIFACT_NAME = "echeck-windows-x64-$VERSION-$linkTypeLower"
         New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/bin"
         New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/lib"
         New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/include/echeck"
-        
+
         # Copy files
         Copy-Item "build/Release/echeck.exe" -Destination "package/$ARTIFACT_NAME/bin/"
         Copy-Item "build/Release/echeck.lib" -Destination "package/$ARTIFACT_NAME/lib/"
         Copy-Item "include/echeck.h" -Destination "package/$ARTIFACT_NAME/include/echeck/"
         Copy-Item "README.md" -Destination "package/$ARTIFACT_NAME/" -ErrorAction SilentlyContinue
         Copy-Item "LICENSE*" -Destination "package/$ARTIFACT_NAME/" -ErrorAction SilentlyContinue
-        
+
         # Copy our DLL if it exists
         if (Test-Path "build/Release/echeck.dll") {
             Copy-Item "build/Release/echeck.dll" -Destination "package/$ARTIFACT_NAME/bin/"
         }
-        
+
         # Copy OpenSSL DLLs - needed at runtime regardless of link type
         $opensslDir = $env:OPENSSL_ROOT_DIR
         if (-not $opensslDir) {
@@ -291,7 +348,7 @@ jobs:
                 exit 1
             }
         }
-        
+
         # Copy OpenSSL DLLs to bin directory
         Write-Host "Copying OpenSSL DLLs to bin directory from $opensslDir/bin"
         $opensslDlls = Get-ChildItem -Path "$opensslDir/bin" -Filter "*.dll"
@@ -299,12 +356,12 @@ jobs:
             Write-Host "ERROR: OpenSSL DLLs not found in $opensslDir/bin!"
             exit 1
         }
-        
+
         foreach ($dll in $opensslDlls) {
             Copy-Item $dll.FullName -Destination "package/$ARTIFACT_NAME/bin/"
             Write-Host "Copied $($dll.Name) to bin directory"
         }
-        
+
         # Create zip archive
         Compress-Archive -Path "package/$ARTIFACT_NAME" -DestinationPath "package/$ARTIFACT_NAME.zip"
 
@@ -313,7 +370,7 @@ jobs:
       with:
         name: echeck-windows-x64-${{ matrix.link-type == 'Runtime' && 'runtime' || 'linktime' }}
         path: package/*.zip
-        
+
   build-windows-arm64:
     name: Build on Windows ARM64 (${{ matrix.link-type }} OpenSSL)
     # Use dedicated Windows ARM64 runner
@@ -711,8 +768,15 @@ jobs:
         $linkType = "${{ matrix.link-type }}"
         $linkTypeLower = if ($linkType -eq "Runtime") { "runtime" } else { "linktime" }
 
+        # Use release tag if available, otherwise use date
+        if ("${{ github.event_name }}" -eq "release") {
+            $VERSION = "${{ github.event.release.tag_name }}"
+        } else {
+            $VERSION = Get-Date -Format 'yyyyMMdd'
+        }
+
         # Create artifact directory
-        $ARTIFACT_NAME = "echeck-windows-arm64-$(Get-Date -Format 'yyyyMMdd')-$linkTypeLower"
+        $ARTIFACT_NAME = "echeck-windows-arm64-$VERSION-$linkTypeLower"
         New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/bin"
         New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/lib"
         New-Item -ItemType Directory -Force -Path "package/$ARTIFACT_NAME/include/echeck"
@@ -736,11 +800,11 @@ jobs:
             Write-Host "ERROR: OPENSSL_ROOT_DIR environment variable not set!"
             exit 1
         }
-        
+
         # Check for ARM64 DLL variants
         $libssl = "$opensslDir/bin/libssl-3-arm64.dll"
         $libcrypto = "$opensslDir/bin/libcrypto-3-arm64.dll"
-        
+
         if (Test-Path $libssl) {
             Copy-Item $libssl -Destination "package/$ARTIFACT_NAME/bin/"
             Write-Host "Copied libssl-3-arm64.dll to bin directory"
@@ -748,7 +812,7 @@ jobs:
             Write-Host "ERROR: libssl-3-arm64.dll not found at $libssl!"
             exit 1
         }
-        
+
         if (Test-Path $libcrypto) {
             Copy-Item $libcrypto -Destination "package/$ARTIFACT_NAME/bin/"
             Write-Host "Copied libcrypto-3-arm64.dll to bin directory"
@@ -786,39 +850,53 @@ jobs:
     name: Upload artifacts to release
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
-    needs: [build-ubuntu, build-macos, build-windows, build-windows-arm64]
+    needs: [build-linux, build-macos, build-windows, build-windows-arm64]
     
     steps:
     - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
         path: artifacts
-        
+        pattern: echeck-*
+
+    - name: List downloaded artifacts
+      run: |
+        echo "Downloaded artifacts:"
+        find artifacts -type f | sort
+
     - name: Upload artifacts to release
       uses: actions/github-script@v7
       with:
         script: |
           const fs = require('fs');
           const path = require('path');
-          const { repo } = context;
-          
+
           // Get the release ID
           const release = context.payload.release;
-          
+
           // Iterate through all downloaded artifacts
           const artifactsDir = 'artifacts';
           const artifacts = fs.readdirSync(artifactsDir);
-          
+
           for (const artifact of artifacts) {
+            // Skip crash dumps and other non-release artifacts
+            if (artifact.startsWith('crash-') || !artifact.startsWith('echeck-')) {
+              console.log(`Skipping non-release artifact: ${artifact}`);
+              continue;
+            }
+
             const artifactDir = path.join(artifactsDir, artifact);
+            const stat = fs.statSync(artifactDir);
+            if (!stat.isDirectory()) continue;
+
             const files = fs.readdirSync(artifactDir);
-            
+
             for (const file of files) {
               const filePath = path.join(artifactDir, file);
               console.log(`Uploading ${filePath} to release ${release.id}`);
-              
+
               const fileContent = fs.readFileSync(filePath);
-              
+
               await github.rest.repos.uploadReleaseAsset({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
