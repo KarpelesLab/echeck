@@ -168,7 +168,7 @@ jobs:
   # macOS Linktime builds - Build x64 first, then combine into universal on ARM64
   build-macos-linktime-x64:
     name: Build on macOS x64 (Linktime OpenSSL)
-    runs-on: macos-13
+    runs-on: macos-15-intel
 
     steps:
     - uses: actions/checkout@v4
